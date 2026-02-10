@@ -583,38 +583,33 @@ class FetchControlSpec extends AnyFreeSpec with ChiselSim {
       dut.io.branch.valid.poke(false.B)
       dut.io.bufferRequest.nValid.expect(0.U)
       dut.io.fetchAddr.bits.expect(0x30000000)
-      dut.io.fetchAddr.valid.expect(1)
+      dut.io.fetchAddr.valid.expect(true.B)
       dut.io.fetchAddr.ready.poke(true.B)
       dut.clock.step()
       dut.io.fetchAddr.ready.poke(false.B)
-      dut.clock.step()
-
-      // Receiving fetch data triggers new fetch
-      dut.io.fetchData.valid.poke(true.B)
-      dut.io.fetchData.bits.addr.poke(0x30000000)
-      dut.io.bufferRequest.nValid.expect(8.U)
-      dut.io.fetchAddr.valid.expect(1)
+      // Continues to speculate and fetch
       dut.io.fetchAddr.bits.expect(0x30000020)
+      dut.io.fetchAddr.valid.expect(true.B)
     }
   }
 
-  "FetchAligned" in {
+  "AlignedSpeculativeFetch" in {
     simulate(new FetchControl(p)) { dut =>
-      dut.clock.step()  // Clear reset.
-      // Upstream can accept 16 buffers
+      dut.io.csr.value(0).poke(0x20000000.U)
+      dut.clock.step()
+
       dut.io.bufferRequest.nReady.poke(8.U)
       dut.io.bufferSpaces.poke(16.U)
-      dut.io.fetchData.valid.poke(true.B)
-      dut.io.fetchData.bits.addr.poke(0x20000000)
-      for (i <- 0 until dut.io.fetchData.bits.inst.length) {
-        dut.io.fetchData.bits.inst(i).poke(i.U)
-      }
-      dut.io.bufferRequest.nValid.expect(8.U)
-      dut.clock.step()  // Temporary
-
-      dut.io.fetchData.valid.poke(false.B)
-      dut.io.fetchAddr.valid.expect(1)
+      dut.clock.step()
+      dut.io.fetchAddr.valid.expect(true.B)
+      dut.io.fetchAddr.bits.expect(0x20000000)
+      dut.io.fetchAddr.ready.poke(true.B)
+      dut.clock.step()
+      dut.io.fetchAddr.valid.expect(true.B)
       dut.io.fetchAddr.bits.expect(0x20000020)
+      dut.clock.step()
+      dut.io.fetchAddr.valid.expect(true.B)
+      dut.io.fetchAddr.bits.expect(0x20000040)
     }
   }
 
@@ -639,45 +634,57 @@ class FetchControlSpec extends AnyFreeSpec with ChiselSim {
     }
   }
 
-  "Backpressure" in {
-    simulate(new FetchControl(p)) { dut =>
-      dut.io.csr.value(0).poke(0x20000000.U)
-      dut.io.fetchAddr.ready.poke(true.B)
-      dut.reset.poke(true.B)
-      dut.clock.step()
-      dut.reset.poke(false.B)
-      dut.clock.step()
-      // Cannot fetch the first 8.
-      dut.io.bufferRequest.nReady.poke(4)
-      dut.io.bufferSpaces.poke(4.U)
-      dut.io.fetchAddr.valid.expect(0)
-      dut.clock.step()
-      // Can now fetch the first 8.
-      dut.io.bufferRequest.nReady.poke(8)
-      dut.io.bufferSpaces.poke(8.U)
-      dut.io.fetchAddr.valid.expect(1)
-    }
-  }
-
-  "BackpressureStaged" in {
+  "FetchJump" in {
     simulate(new FetchControl(p)) { dut =>
       dut.clock.step()  // Clear reset.
+      // Upstream can accept 12 buffers
+      dut.io.bufferRequest.nReady.poke(8.U)
+      dut.io.bufferSpaces.poke(12.U)
       dut.io.fetchData.valid.poke(true.B)
       dut.io.fetchData.bits.addr.poke(0x20000000)
       for (i <- 0 until dut.io.fetchData.bits.inst.length) {
         dut.io.fetchData.bits.inst(i).poke(i.U)
       }
-      // Just fetched 8, cannot fetch another 8.
-      dut.io.bufferRequest.nReady.poke(8)
-      dut.io.bufferSpaces.poke(8.U)
-      dut.io.bufferRequest.nValid.expect(8)
-      dut.io.fetchAddr.valid.expect(0)
+      dut.io.fetchData.bits.inst(3).poke("x0200006f".U) // JAL opcode (offset +32)
+      dut.io.bufferRequest.nValid.expect(4.U) // JAL is predicted, 4 valid
+      dut.io.flushTx.expect(true.B)
       dut.clock.step()
-      dut.io.fetchData.valid.poke(false.B)  // Prev fetched instructions buffered.
-      // Can now fetch another 8.
-      dut.io.bufferRequest.nReady.poke(8)
-      dut.io.bufferSpaces.poke(8.U)
+
+      dut.io.fetchData.valid.poke(false.B)
+      dut.io.fetchAddr.valid.expect(true.B)
+      dut.io.fetchAddr.bits.expect(0x2000002c) // Fetch redirects to target
+    }
+  }
+
+  "CommitBackpressure" in {
+    simulate(new FetchControl(p)) { dut =>
+      dut.io.csr.value(0).poke(0x20000000.U)
+      dut.clock.step()
+
+      // Instruction buffer is full, cannot accept 8 instructions
+      dut.io.bufferRequest.nReady.poke(4.U)
+      dut.io.bufferSpaces.poke(4.U)
+
+      // Fetch initiation is NOT blocked
       dut.io.fetchAddr.valid.expect(1)
+
+      dut.io.fetchData.valid.poke(true.B)
+      dut.io.fetchData.bits.addr.poke(0x20000000)
+      for (i <- 0 until dut.io.fetchData.bits.inst.length) {
+        dut.io.fetchData.bits.inst(i).poke(i.U)
+      }
+
+      // Committing fetch results IS blocked
+      dut.io.fetchData.ready.expect(false.B)
+      dut.io.bufferRequest.nValid.expect(0.U)
+
+      // Free up buffer space
+      dut.io.bufferRequest.nReady.poke(8.U)
+      dut.io.bufferSpaces.poke(8.U)
+
+      // Committing fetch results is now unblocked
+      dut.io.fetchData.ready.expect(true.B)
+      dut.io.bufferRequest.nValid.expect(8.U)
     }
   }
 }
@@ -696,16 +703,16 @@ class FetcherSpec extends AnyFreeSpec with ChiselSim {
     simulate(new Fetcher(p)) { dut =>
       dut.io.ctrl.bits.poke(32.U)
       dut.io.ctrl.valid.poke(true.B)
-      dut.clock.step()
-      dut.io.ibus.valid.expect(1)
-      dut.io.ibus.ready.expect(0)
-      dut.io.fetch.valid.expect(0)
       dut.io.ibus.ready.poke(true.B)
+      dut.io.ctrl.ready.expect(true.B)
+      dut.io.ibus.valid.expect(true.B)
+      dut.clock.step()
+      dut.io.ibus.ready.poke(false.B)
+      dut.io.ctrl.ready.expect(false.B)
       dut.io.ibus.rdata.poke("x0012d678000000000012d687".U(256.W))
+      dut.io.fetch.valid.expect(0)
       dut.clock.step()
-      dut.clock.step()
-      dut.io.ctrl.ready.expect(1)
-      dut.io.fetch.valid.expect(1)
+      dut.io.fetch.valid.expect(true.B)
       dut.io.fetch.bits.addr.expect(32)
       dut.io.fetch.bits.inst(0).expect(1234567)
       dut.io.fetch.bits.inst(1).expect(0)

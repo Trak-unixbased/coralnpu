@@ -280,7 +280,7 @@ class Fetcher(p: Parameters) extends Module {
   val io = IO(new Bundle {
     val ctrl = Flipped(Irrevocable(UInt(p.fetchAddrBits.W)))
     val flushTx = Input(Bool())
-    val fetch = Output(Valid(new FetchResponse(p)))
+    val fetch = Decoupled(new FetchResponse(p))
     val ibus = new IBusIO(p)
   })
 
@@ -318,25 +318,20 @@ class Fetcher(p: Parameters) extends Module {
   reorderBuffer.io.busResp.bits.txid := RegNext(txidAllocator.io.alloc.bits)
   reorderBuffer.io.busResp.bits.resp.data := io.ibus.rdata
   reorderBuffer.io.busResp.bits.resp.fault := RegNext(io.ibus.fault.valid)
-  // Currently nothing blocks us from committing a transaction.
-  reorderBuffer.io.commit.ready := true.B
+  reorderBuffer.io.commit.ready := io.fetch.ready
   reorderBuffer.io.flush := io.flushTx
   io.ctrl.ready := ibusAddrFire
 
   txidAllocator.io.free.valid := reorderBuffer.io.freeTxid.valid
   txidAllocator.io.free.bits := reorderBuffer.io.freeTxid.bits
 
-  val result = MakeValid(
-      reorderBuffer.io.commit.fire,
-      MakeWireBundle[FetchResponse](
-          new FetchResponse(p),
-          _.addr -> reorderBuffer.io.commit.bits.addr,
-          _.inst -> UIntToVec(reorderBuffer.io.commit.bits.resp.data, p.instructionBits),
-          _.fault -> reorderBuffer.io.commit.bits.resp.fault,
-      )
+  io.fetch.valid := reorderBuffer.io.commit.valid
+  io.fetch.bits := MakeWireBundle[FetchResponse](
+      new FetchResponse(p),
+      _.addr -> reorderBuffer.io.commit.bits.addr,
+      _.inst -> UIntToVec(reorderBuffer.io.commit.bits.resp.data, p.instructionBits),
+      _.fault -> reorderBuffer.io.commit.bits.resp.fault,
   )
-
-  io.fetch := result
 }
 
 class FetchControl(p: Parameters) extends Module {
@@ -345,7 +340,7 @@ class FetchControl(p: Parameters) extends Module {
         val csr = new CsrInIO(p)
         val iflush = Input(Valid(UInt(32.W)))
         val branch = Input(Valid(UInt(p.fetchAddrBits.W)))
-        val fetchData = Input(Valid(new FetchResponse(p)))
+        val fetchData = Flipped(Decoupled(new FetchResponse(p)))
         val linkPort = Flipped(new RegfileLinkPortIO)
 
         val fetchAddr = Irrevocable(UInt(p.fetchAddrBits.W))
@@ -353,6 +348,8 @@ class FetchControl(p: Parameters) extends Module {
         val bufferRequest = DecoupledVectorIO(new FetchInstruction(p), p.fetchInstrSlots)
         val bufferSpaces = Input(UInt(log2Ceil(p.fetchInstrSlots * 2 + 1).W))
     })
+
+    val lsb = log2Ceil(p.fetchDataBits / 8)
 
     def PredictJump(addr: UInt, inst: UInt): ValidIO[UInt] = {
       assert(p.instructionBits == 32)
@@ -436,10 +433,12 @@ class FetchControl(p: Parameters) extends Module {
     io.fetchFault := MakeValid(fetchFaultValid, io.fetchData.bits.addr)
     faulted := fetchFaultValid
 
+    val sufficientBuffer = io.bufferSpaces >= predecode.count
+    io.fetchData.ready := sufficientBuffer || fetchFaultValid
     // Send out results. All branch or flush, current or past, will make us
     // discard results.
     // TODO(davidgao): ForceZero it when invalid?
-    val writeToBuffer = io.fetchData.valid && !fetchFaultValid && !ongoingBranchOrFlush
+    val writeToBuffer = io.fetchData.fire && !fetchFaultValid && !ongoingBranchOrFlush
     val nValid = Mux(writeToBuffer, predecode.count, 0.U)
     io.bufferRequest.nValid := nValid
 
@@ -447,35 +446,28 @@ class FetchControl(p: Parameters) extends Module {
 
     // PC is initialized with the CSR value below upon leaving reset.
     val pc = RegInit(MakeInvalid(UInt(32.W)))
-    val pcNext = MuxCase(pc.bits, Seq(
-        (!pc.valid) -> Cat(io.csr.value(0)(31,2), 0.U(2.W)),  // We're leaving reset.
-        io.iflush.valid -> io.iflush.bits,
-        io.branch.valid -> io.branch.bits,
-        writeToBuffer -> predecode.nextPc,
-        // At this point `io.fetchData.valid` is false. We did not fire a
-        // transaction last cycle. This could be a delay in results or a block
-        // on our side. EAGAIN.
-    ))
 
-    // Buffer space for the fetched instructions are guaranteed upon initiation
-    // of the transaction. We can only start a new fetch if there is sufficient
-    // space AFTER we push what we have on hand.
-    val insufficientBuffer = io.bufferSpaces < nValid +& p.fetchInstrSlots.U
-    // TODO(davidgao): decouple bus access and remove this
-    val waitForResult = RegNext(io.fetchAddr.fire, false.B)
     // Past branch or flush doesn't block us from initiating new fetches.
     val blockNewFetch = !pc.valid ||  // We're stil in reset.
                         currentBranchOrFlush ||
-                        insufficientBuffer ||
                         ongoingFetch.valid ||
-                        waitForResult ||
                         fetchFaultValid
 
     val pcFetched = RegInit(false.B)
     pcFetched := MuxCase(pcFetched, Seq(
         (!pc.valid) -> !blockNewFetch,  // We're leaving reset.
         (io.iflush.valid || io.branch.valid) -> false.B,
-        writeToBuffer -> !blockNewFetch,
+        (writeToBuffer && predecode.hasJumped) -> !blockNewFetch,
+        // Speculative fetch
+        (!blockNewFetch) -> true.B,
+    ))
+    val pcNext = MuxCase(pc.bits, Seq(
+        (!pc.valid) -> Cat(io.csr.value(0)(31,2), 0.U(2.W)),  // We're leaving reset.
+        io.iflush.valid -> io.iflush.bits,
+        io.branch.valid -> io.branch.bits,
+        (writeToBuffer && predecode.hasJumped) -> predecode.nextPc,
+        // Speculative fetch
+        (!blockNewFetch && pcFetched) -> Cat(pc.bits(31, lsb) + 1.U, 0.U(lsb.W)),
     ))
     // PC will always be valid as soon as we leave reset.
     pc := MakeValid(pcNext)
@@ -490,8 +482,13 @@ class FetchControl(p: Parameters) extends Module {
     val newFetchInitiated = fetch.valid && !ongoingFetch.valid
     pastBranchOrFlush := ongoingBranchOrFlush && !newFetchInitiated
 
+    // Similarly, whenever we write a fetched jump, we need to flush until we initiate a new fetch
+    val newJump = writeToBuffer && predecode.hasJumped
+    val pendingJump = RegInit(false.B)
+    pendingJump := (pendingJump || newJump) && !newFetchInitiated
+
     io.fetchAddr <> MakeIrrevocable(fetch)
-    io.flushTx := ongoingBranchOrFlush || (writeToBuffer && predecode.hasJumped)
+    io.flushTx := ongoingBranchOrFlush || pendingJump || newJump
 }
 
 class UncachedFetch(p: Parameters) extends FetchUnit(p) {
@@ -518,7 +515,7 @@ class UncachedFetch(p: Parameters) extends FetchUnit(p) {
   val fetcher = Module(new Fetcher(p))
   fetcher.io.ctrl <> ctrl.io.fetchAddr
   fetcher.io.flushTx := ctrl.io.flushTx
-  ctrl.io.fetchData := fetcher.io.fetch
+  ctrl.io.fetchData <> fetcher.io.fetch
   fetcher.io.ibus <> io.ibus
 
   val window = p.fetchInstrSlots * 2
