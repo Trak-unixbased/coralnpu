@@ -133,15 +133,20 @@ object FloatInstruction {
     ))
 
     val uses_rs3 = opcode.bits.isOneOf(FloatOpcode.MADD, FloatOpcode.MSUB, FloatOpcode.NMADD, FloatOpcode.NMSUB)
-    val uses_rs2 = opcode.bits.isOneOf(FloatOpcode.STOREFP) || ((opcode.bits === FloatOpcode.OPFP) && MuxLookup(funct5, true.B)(Seq(
-      "b11100".U -> false.B, // FMV.X.W
-      "b11100".U -> false.B, // FCLASS
-      "b11000".U -> false.B, // FCVT.W.S
-      "b11110".U -> false.B, // FMV.W.X
-      "b11010".U -> false.B, // FCVT.S.W
-      "b01011".U -> false.B, // FSQRT.W
-      "b01000".U -> false.B, // FCVT.S.BF16 / FCVT.BF16.S
-    )))
+    val uses_rs2 = opcode.bits.isOneOf(FloatOpcode.STOREFP,
+                                       FloatOpcode.MADD,
+                                       FloatOpcode.MSUB,
+                                       FloatOpcode.NMADD,
+                                       FloatOpcode.NMSUB) ||
+                   ((opcode.bits === FloatOpcode.OPFP) && MuxLookup(funct5, true.B)(Seq(
+                     "b11100".U -> false.B, // FMV.X.W
+                     "b11100".U -> false.B, // FCLASS
+                     "b11000".U -> false.B, // FCVT.W.S
+                     "b11110".U -> false.B, // FMV.W.X
+                     "b11010".U -> false.B, // FCVT.S.W
+                     "b01011".U -> false.B, // FSQRT.W
+                     "b01000".U -> false.B, // FCVT.S.BF16 / FCVT.BF16.S
+                   )))
     // All float instructions EXCEPT loads, stores, fmv.w.x, and fcvt.s.w, use float rs1.
     val float_rs1 = !opcode.bits.isOneOf(FloatOpcode.STOREFP, FloatOpcode.LOADFP) && !scalar_rs1
 

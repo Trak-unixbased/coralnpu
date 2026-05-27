@@ -378,10 +378,8 @@ class DispatchV2(p: Parameters) extends Dispatch(p) {
   val floatRdScoreboard = if (p.enableFloat) { (0 until p.instructionLanes).map(i =>
     MuxOR(writesFloatRd(i), UIntToOH(rdAddr(i), 32))
   ) } else { (0 until p.instructionLanes).map(_ => 0.U(32.W)) }
-
   val floatScoreboardScan = floatRdScoreboard.scan(0.U(32.W))(_ | _)
   val fcomb = floatScoreboardScan.map(_ | io.fscoreboard.getOrElse(0.U))
-
   val floatReadAfterWrite = (0 until p.instructionLanes).map(i =>
       (floatReadScoreboard(i) & fcomb(i)) =/= 0.U(32.W))
   val floatWriteAfterWrite = (0 until p.instructionLanes).map(i =>

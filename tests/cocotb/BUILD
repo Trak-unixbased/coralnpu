@@ -32,6 +32,7 @@ COCOTB_TEST_BINARY_TARGETS = glob(["**/*.elf"]) + glob(["**/*.o"]) + [
     ":align_test.elf",
     ":frm_test.elf",
     ":float_csr_interlock_test.elf",
+    ":float_hazard_tests.elf",
     ":finish_txn_before_halt.elf",
     ":math.elf",
     ":stress_test.elf",
@@ -113,6 +114,7 @@ CORE_MINI_AXI_SIM_TESTCASES = [
     ("core_mini_axi_rand_instr_test", "large"),
     ("core_mini_axi_burst_types_test", "large"),
     "core_mini_axi_float_csr_test",
+    "core_mini_axi_float_hazard_test",
     "unreachable_prefetch_fault",
     "core_mini_axi_frm_test",
     "core_mini_axi_backdoor_load_test",
@@ -136,6 +138,7 @@ RVV_CORE_MINI_AXI_SIM_TESTCASES = [
     ("core_mini_axi_rand_instr_test", "large"),
     ("core_mini_axi_burst_types_test", "large"),
     "core_mini_axi_float_csr_test",
+    "core_mini_axi_float_hazard_test",
     "unreachable_prefetch_fault",
     "core_mini_axi_frm_test",
     "core_mini_axi_backdoor_load_test",
@@ -545,6 +548,13 @@ coralnpu_v2_binary(
     name = "float_csr_interlock_test",
     srcs = [
         "float_csr_interlock_test.S",
+    ],
+)
+
+coralnpu_v2_binary(
+    name = "float_hazard_tests",
+    srcs = [
+        "float_hazard_tests.S",
     ],
 )
 

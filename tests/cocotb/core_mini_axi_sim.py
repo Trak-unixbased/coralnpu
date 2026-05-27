@@ -398,6 +398,21 @@ async def core_mini_axi_float_csr_test(dut):
     assert core_mini_axi.dut.io_fault.value == 0
 
 @cocotb.test()
+async def core_mini_axi_float_hazard_test(dut):
+  core_mini_axi = CoreMiniAxiInterface(dut)
+  await core_mini_axi.init()
+  await core_mini_axi.reset()
+  cocotb.start_soon(core_mini_axi.clock.start())
+  r = runfiles.Create()
+
+  with open(r.Rlocation("coralnpu_hw/tests/cocotb/float_hazard_tests.elf"), "rb") as f:
+    entry_point = await core_mini_axi.load_elf(f)
+    await core_mini_axi.execute_from(entry_point)
+
+    await core_mini_axi.wait_for_halted()
+    assert core_mini_axi.dut.io_fault.value == 0
+
+@cocotb.test()
 async def unreachable_prefetch_fault(dut):
   fixture = await Fixture.Create(dut)
   r = runfiles.Create()
