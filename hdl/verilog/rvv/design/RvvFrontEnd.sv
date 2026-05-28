@@ -336,8 +336,7 @@ module RvvFrontEnd#(parameter N = 4,
       config_state_q.xsat <= 0;
 `ifdef ZVE32F_ON
       config_state_q.frm <= RVFRM'('0);
-`endif
-  // ZVE32F_ON
+`endif  // ZVE32F_ON
       config_state_q.sew <= SEW8;
       config_state_q.lmul <= LMUL1;
     end else begin
