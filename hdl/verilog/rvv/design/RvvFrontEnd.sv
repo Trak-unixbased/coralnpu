@@ -297,9 +297,12 @@ module RvvFrontEnd#(parameter N = 4,
               end else if (vl_minus_one[i][`VL_WIDTH-6] == 'b1) begin
                 // vl from VLEN/32+1 to VLEN/16
                 inst_config_state[i+1].lmul = LMUL1;
-              end else begin
-                // vl from 0 to VLEN/32
+              end else if (vl_minus_one[i][`VL_WIDTH-7] == 'b1) begin
+                // vl from VLEN/64+1 to VLEN/32
                 inst_config_state[i+1].lmul = LMUL1_2;
+              end else begin
+                // vl from 0 to VLEN/64
+                inst_config_state[i+1].lmul = LMUL1_4;
               end
             end
             SEW32: begin
@@ -312,9 +315,15 @@ module RvvFrontEnd#(parameter N = 4,
               end else if (vl_minus_one[i][`VL_WIDTH-6] == 'b1) begin
                 // vl from VLEN/32+1 to VLEN/16
                 inst_config_state[i+1].lmul = LMUL2;
-              end else begin
-                // vl from 0 to VLEN/32
+              end else if (vl_minus_one[i][`VL_WIDTH-7] == 'b1) begin
+                // vl from VLEN/64+1 to VLEN/32
                 inst_config_state[i+1].lmul = LMUL1;
+              end else if (vl_minus_one[i][`VL_WIDTH-8] == 'b1) begin
+                // vl from VLEN/128+1 to VLEN/64
+                inst_config_state[i+1].lmul = LMUL1_2;
+              end else begin
+                // vl from 0 to VLEN/128
+                inst_config_state[i+1].lmul = LMUL1_4;
               end
             end
           endcase

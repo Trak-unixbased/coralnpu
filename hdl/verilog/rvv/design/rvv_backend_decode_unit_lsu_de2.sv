@@ -38,6 +38,7 @@ module rvv_backend_decode_unit_lsu_de2
   RVVConfigState                                      vector_csr_lsu;
   logic   [`VSTART_WIDTH-1:0]                         csr_vstart;
   logic   [`UOP_INDEX_WIDTH-1:0]                      uop_index_max;         
+  RVVLMUL                                             reduced_lmul;  
   EMUL_e                                              emul_vd;          
   EMUL_e                                              emul_vs2;          
   EMUL_e                                              emul_max; 
@@ -45,7 +46,6 @@ module rvv_backend_decode_unit_lsu_de2
   EEW_e                                               eew_vs2;          
   EEW_e                                               eew_max;          
 
-  logic                                               valid_lsu;
   logic                                               valid_lsu_opcode;
   logic                                               valid_lsu_mop;
   logic   [`UOP_INDEX_WIDTH-1:0]                      uop_index_base;         
@@ -78,8 +78,8 @@ module rvv_backend_decode_unit_lsu_de2
   assign inst_umop      = lcmd_valid ? lcmd.cmd.bits[17:13] : 'b0;
   assign inst_funct3    = lcmd_valid ? lcmd.cmd.bits[7:5] : 'b0;
   assign inst_vd        = lcmd_valid ? lcmd.cmd.bits[4:0] : 'b0;
-  assign inst_opcode    = lcmd_valid ? lcmd.cmd.opcode : LOAD;
-  assign vector_csr_lsu = lcmd_valid ? lcmd.cmd.arch_state : RVVConfigState'('0);
+  assign inst_opcode    = lcmd_valid ? lcmd.cmd.opcode : 'b0;
+  assign vector_csr_lsu = lcmd_valid ? lcmd.cmd.arch_state : 'b0;
   assign csr_vstart     = lcmd_valid ? lcmd.cmd.arch_state.vstart : 'b0;
   assign uop_index_max  = lcmd_valid ? lcmd.uop_index_max : 'b0;
   assign emul_vd        = lcmd_valid ? lcmd.emul_vd : EMUL_NONE; 
@@ -88,6 +88,7 @@ module rvv_backend_decode_unit_lsu_de2
   assign eew_vd         = lcmd_valid ? lcmd.eew_vd : EEW_NONE; 
   assign eew_vs2        = lcmd_valid ? lcmd.eew_vs2 : EEW_NONE;
   assign eew_max        = lcmd_valid ? lcmd.eew_max : EEW_NONE;
+  assign reduced_lmul   = lcmd_valid ? lcmd.cmd.arch_state.lmul : LMULRESERVED;  
 
   // valid signal
   assign valid_lsu = valid_lsu_opcode&valid_lsu_mop&lcmd_valid;
@@ -285,24 +286,8 @@ module rvv_backend_decode_unit_lsu_de2
             US_REGULAR,          
             US_FAULT_FIRST: begin
               case({inst_nf,emul_vd})
-                {NF2,EMUL4}: begin 
-                  case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
-                    5'd1   : vd_offset[i] = 3'd4;
-                    5'd2   : vd_offset[i] = 3'd1;
-                    5'd3   : vd_offset[i] = 3'd5;
-                    5'd4   : vd_offset[i] = 3'd2;
-                    5'd5   : vd_offset[i] = 3'd6;
-                    5'd6   : vd_offset[i] = 3'd3;
-                    default: vd_offset[i] = uop_index_current[i][2:0];
-                  endcase   
-                end
-                {NF2,EMUL2}: begin
-                  case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
-                    5'd1   : vd_offset[i] = 3'd2;
-                    5'd2   : vd_offset[i] = 3'd1;
-                    default: vd_offset[i] = uop_index_current[i][2:0];
-                  endcase   
-                end
+                {NF2,EMUL4}: vd_offset[i] = {uop_index_current[i][0], uop_index_current[i][2:1]};
+                {NF2,EMUL2}: vd_offset[i] = {1'b0, uop_index_current[i][0], uop_index_current[i][1]};
                 {NF3,EMUL2}: begin
                   case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
                     5'd1   : vd_offset[i] = 3'd2;
@@ -312,19 +297,8 @@ module rvv_backend_decode_unit_lsu_de2
                     default: vd_offset[i] = uop_index_current[i][2:0];
                   endcase   
                 end
-                {NF4,EMUL2}: begin
-                  case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
-                    5'd1   : vd_offset[i] = 3'd2;
-                    5'd2   : vd_offset[i] = 3'd4;
-                    5'd3   : vd_offset[i] = 3'd6;
-                    5'd4   : vd_offset[i] = 3'd1;
-                    5'd5   : vd_offset[i] = 3'd3;
-                    5'd6   : vd_offset[i] = 3'd5;
-                    default: vd_offset[i] = uop_index_current[i][2:0];
-                  endcase
-                end
-                default: 
-                  vd_offset[i] = uop_index_current[i][2:0];
+                {NF4,EMUL2}: vd_offset[i] = {uop_index_current[i][1:0], uop_index_current[i][2]};
+                default:     vd_offset[i] = uop_index_current[i][2:0];
               endcase
             end
             US_WHOLE_REGISTER: begin
@@ -338,24 +312,8 @@ module rvv_backend_decode_unit_lsu_de2
 
         CONSTANT_STRIDE: begin
           case({inst_nf,emul_vd})
-            {NF2,EMUL4}: begin 
-              case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
-                5'd1   : vd_offset[i] = 3'd4;
-                5'd2   : vd_offset[i] = 3'd1;
-                5'd3   : vd_offset[i] = 3'd5;
-                5'd4   : vd_offset[i] = 3'd2;
-                5'd5   : vd_offset[i] = 3'd6;
-                5'd6   : vd_offset[i] = 3'd3;
-                default: vd_offset[i] = uop_index_current[i][2:0];
-              endcase   
-            end
-            {NF2,EMUL2}: begin
-              case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
-                5'd1   : vd_offset[i] = 3'd2;
-                5'd2   : vd_offset[i] = 3'd1;
-                default: vd_offset[i] = uop_index_current[i][2:0];
-              endcase   
-            end
+            {NF2,EMUL4}: vd_offset[i] = {uop_index_current[i][0], uop_index_current[i][2:1]};
+            {NF2,EMUL2}: vd_offset[i] = {1'b0, uop_index_current[i][0], uop_index_current[i][1]};
             {NF3,EMUL2}: begin
               case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
                 5'd1   : vd_offset[i] = 3'd2;
@@ -365,18 +323,8 @@ module rvv_backend_decode_unit_lsu_de2
                 default: vd_offset[i] = uop_index_current[i][2:0];
               endcase   
             end
-            {NF4,EMUL2}: begin
-              case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
-                5'd1   : vd_offset[i] = 3'd2;
-                5'd2   : vd_offset[i] = 3'd4;
-                5'd3   : vd_offset[i] = 3'd6;
-                5'd4   : vd_offset[i] = 3'd1;
-                5'd5   : vd_offset[i] = 3'd3;
-                5'd6   : vd_offset[i] = 3'd5;
-                default: vd_offset[i] = uop_index_current[i][2:0];
-              endcase
-            end
-            default: vd_offset[i] = uop_index_current[i][2:0];
+            {NF4,EMUL2}: vd_offset[i] = {uop_index_current[i][1:0], uop_index_current[i][2]};
+            default:     vd_offset[i] = uop_index_current[i][2:0];
           endcase
         end
         
@@ -393,24 +341,8 @@ module rvv_backend_decode_unit_lsu_de2
             // 1:4
             {EEW8,EEW32}: begin            
               case({inst_nf,emul_vd})
-                {NF2,EMUL4}: begin 
-                  case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
-                    5'd1   : vd_offset[i] = 3'd4;
-                    5'd2   : vd_offset[i] = 3'd1;
-                    5'd3   : vd_offset[i] = 3'd5;
-                    5'd4   : vd_offset[i] = 3'd2;
-                    5'd5   : vd_offset[i] = 3'd6;
-                    5'd6   : vd_offset[i] = 3'd3;
-                    default: vd_offset[i] = uop_index_current[i][2:0];
-                  endcase   
-                end
-                {NF2,EMUL2}: begin
-                  case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
-                    5'd1   : vd_offset[i] = 3'd2;
-                    5'd2   : vd_offset[i] = 3'd1;
-                    default: vd_offset[i] = uop_index_current[i][2:0];
-                  endcase   
-                end
+                {NF2,EMUL4}: vd_offset[i] = {uop_index_current[i][0], uop_index_current[i][2:1]};
+                {NF2,EMUL2}: vd_offset[i] = {1'b0, uop_index_current[i][0], uop_index_current[i][1]};
                 {NF3,EMUL2}: begin
                   case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
                     5'd1   : vd_offset[i] = 3'd2;
@@ -420,76 +352,109 @@ module rvv_backend_decode_unit_lsu_de2
                     default: vd_offset[i] = uop_index_current[i][2:0];
                   endcase   
                 end
-                {NF4,EMUL2}: begin
-                  case(uop_index_current[i][`UOP_INDEX_WIDTH-1:0])
-                    5'd1   : vd_offset[i] = 3'd2;
-                    5'd2   : vd_offset[i] = 3'd4;
-                    5'd3   : vd_offset[i] = 3'd6;
-                    5'd4   : vd_offset[i] = 3'd1;
-                    5'd5   : vd_offset[i] = 3'd3;
-                    5'd6   : vd_offset[i] = 3'd5;
-                    default: vd_offset[i] = uop_index_current[i][2:0];
-                  endcase
-                end
-                default: vd_offset[i] = uop_index_current[i][2:0];
+                {NF4,EMUL2}: vd_offset[i] = {uop_index_current[i][1:0], uop_index_current[i][2]};
+                default:     vd_offset[i] = uop_index_current[i][2:0];
               endcase
             end
             // 2:1
             {EEW16,EEW8},
-            {EEW32,EEW16},
-            // 4:1
-            {EEW32,EEW8}: begin            
-              case({emul_vs2,emul_vd})
-                {EMUL1,EMUL1}: 
-                  vd_offset[i] = uop_index_current[i][2:0];
-                {EMUL2,EMUL1}:
-                  vd_offset[i] = uop_index_current[i][3:1];
-                {EMUL4,EMUL2}: begin
+            {EEW32,EEW16}: begin
+              case(emul_vs2)
+                EMUL1: vd_offset[i] = uop_index_current[i][2:0];
+                EMUL2: vd_offset[i] = (reduced_lmul==LMUL1) ? uop_index_current[i][3:1] : uop_index_current[i][2:0];
+                EMUL4: begin
                   case(inst_nf)
                     NF2: begin
-                      vd_offset[i] = {1'b0, uop_index_current[i][1], uop_index_current[i][2]};
+                      case(reduced_lmul)
+                        LMUL1,
+                        LMUL2:   vd_offset[i] = {1'b0, uop_index_current[i][1], uop_index_current[i][2]};
+                        default: vd_offset[i] = {uop_index_current[i][1:0], 1'b0};  // LMUL1_2
+                      endcase
                     end
                     NF3: begin
-                      case(uop_index_current[i][`UOP_INDEX_WIDTH-1:1])
-                        4'd1   : vd_offset[i] = 3'd2;
-                        4'd2   : vd_offset[i] = 3'd4;
-                        4'd3   : vd_offset[i] = 3'd1;
-                        4'd4   : vd_offset[i] = 3'd3;
-                        default: vd_offset[i] = uop_index_current[i][3:1];
-                      endcase   
+                      case(reduced_lmul)
+                        LMUL1,
+                        LMUL2: begin
+                          case(uop_index_current[i][`UOP_INDEX_WIDTH-1:1])
+                            4'd1   : vd_offset[i] = 3'd2;
+                            4'd2   : vd_offset[i] = 3'd4;
+                            4'd3   : vd_offset[i] = 3'd1;
+                            4'd4   : vd_offset[i] = 3'd3;
+                            default: vd_offset[i] = uop_index_current[i][3:1];
+                          endcase   
+                        end
+                        default: vd_offset[i] = {uop_index_current[i][1:0], 1'b0};  // LMUL1_2
+                      endcase
                     end
                     NF4: begin
-                      vd_offset[i] = {uop_index_current[i][2:1], uop_index_current[i][3]};
+                      case(reduced_lmul)
+                        LMUL1,
+                        LMUL2:   vd_offset[i] = {uop_index_current[i][2:1], uop_index_current[i][3]};
+                        default: vd_offset[i] = {uop_index_current[i][1:0], 1'b0};  // LMUL1_2
+                      endcase
                     end
-                    default: vd_offset[i] = {1'b0, uop_index_current[i][2:1]};
+                    default: vd_offset[i] = reduced_lmul==LMUL1_2 ? uop_index_current[i][2:0] : {1'b0, uop_index_current[i][2:1]};
                   endcase
                 end
-                {EMUL8,EMUL4}: begin 
-                  if (inst_nf==NF2)
-                    vd_offset[i] = {uop_index_current[i][1], uop_index_current[i][3:2]};
-                  else
-                    vd_offset[i] = {1'b0, uop_index_current[i][2:1]};
+                EMUL8: begin 
+                  if(inst_nf==NF2) begin
+                    case(reduced_lmul)
+                      LMUL1,
+                      LMUL2,
+                      LMUL4:   vd_offset[i] = {uop_index_current[i][1], uop_index_current[i][3:2]};
+                      default: vd_offset[i] = {uop_index_current[i][0], 2'b0};  // LMUL1_2, LMUL1_4
+                    endcase
+                  end else begin
+                    case(reduced_lmul)
+                      LMUL1,
+                      LMUL2,
+                      LMUL4:   vd_offset[i] = uop_index_current[i][3:1];
+                      default: vd_offset[i] = 'b0;  // LMUL1_2, LMUL1_4
+                    endcase
+                  end
                 end
-                {EMUL4,EMUL1}: 
-                  vd_offset[i] = uop_index_current[i][4:2];
-                {EMUL8,EMUL2}: begin 
-                  case(inst_nf)
-                    NF2: begin
-                      vd_offset[i] = {1'b0, uop_index_current[i][2], uop_index_current[i][3]};
+              endcase
+            end            
+            // 4:1
+            {EEW32,EEW8}: begin            
+              case(emul_vs2)
+                EMUL1,
+                EMUL2,
+                EMUL4: begin
+                  case(reduced_lmul)
+                    LMUL1_2: vd_offset[i] = uop_index_current[i][3:1];
+                    LMUL1  : vd_offset[i] = uop_index_current[i][4:2];
+                    default: vd_offset[i] = uop_index_current[i][2:0];
+                  endcase
+                end
+                EMUL8: begin
+                  case(reduced_lmul)
+                    LMUL1_2: begin
+                      case(inst_nf)
+                        NF2: vd_offset[i] = {1'b0, uop_index_current[i][1], 1'b0};
+                        NF3,
+                        NF4: vd_offset[i] = {uop_index_current[i][2:1], 1'b0};
+                        default: vd_offset[i] = uop_index_current[i][3:1];
+                      endcase
                     end
-                    NF3: begin
-                      case(uop_index_current[i][`UOP_INDEX_WIDTH-1:2])
-                        3'd1   : vd_offset[i] = 3'd2;
-                        3'd2   : vd_offset[i] = 3'd4;
-                        3'd3   : vd_offset[i] = 3'd1;
-                        3'd4   : vd_offset[i] = 3'd3;
+                    LMUL1,
+                    LMUL2: begin
+                      case(inst_nf)
+                        NF2: vd_offset[i] = {1'b0, uop_index_current[i][2], uop_index_current[i][3]};
+                        NF3: begin
+                          case(uop_index_current[i][`UOP_INDEX_WIDTH-1:2])
+                            3'd1   : vd_offset[i] = 3'd2;
+                            3'd2   : vd_offset[i] = 3'd4;
+                            3'd3   : vd_offset[i] = 3'd1;
+                            3'd4   : vd_offset[i] = 3'd3;
+                            default: vd_offset[i] = uop_index_current[i][4:2];
+                          endcase   
+                        end
+                        NF4: vd_offset[i] = {uop_index_current[i][3:2], uop_index_current[i][4]};
                         default: vd_offset[i] = uop_index_current[i][4:2];
-                      endcase   
+                      endcase
                     end
-                    NF4: begin
-                      vd_offset[i] = {uop_index_current[i][3:2], uop_index_current[i][4]};
-                    end
-                    default: vd_offset[i] = uop_index_current[i][4:2];
+                    default: vd_offset[i] = {uop_index_current[i][1:0], 1'b0};  // LMUL1_4
                   endcase
                 end
               endcase
@@ -530,6 +495,8 @@ module rvv_backend_decode_unit_lsu_de2
       case(inst_funct6[2:0])
         UNORDERED_INDEX,
         ORDERED_INDEX: begin
+          vs2_valid[i] = 1'b1; 
+
           case({eew_vs2,eew_vd})
             // EEW_vs2:EEW_vd=1:1
             {EEW8,EEW8},
@@ -538,71 +505,78 @@ module rvv_backend_decode_unit_lsu_de2
               case(emul_vs2)
                 EMUL2: begin
                   case(inst_nf)
-                    NF2:     vs2_offset[i] = {2'b0, uop_index_current[i][1]};
-                    NF3:     vs2_offset[i] = (uop_index_current[i]>='d3) ? 3'd1 : 3'b0;
-                    NF4:     vs2_offset[i] = {2'b0, uop_index_current[i][2]};
-                    default: vs2_offset[i] = {2'b0, uop_index_current[i][0]};
+                    NF2:     vs2_offset[i] = reduced_lmul==LMUL2 ? {2'b0, uop_index_current[i][1]} : 'b0;
+                    NF3:     vs2_offset[i] = reduced_lmul==LMUL2 ? {2'b0, uop_index_current[i]>='d3} : 'b0;
+                    NF4:     vs2_offset[i] = reduced_lmul==LMUL2 ? {2'b0, uop_index_current[i][2]} : 'b0;
+                    default: vs2_offset[i] = reduced_lmul==LMUL2 ? {2'b0, uop_index_current[i][0]} : 'b0; // NF1
                   endcase
-                  vs2_valid[i]  = 1'b1; 
                 end
                 EMUL4: begin
-                  vs2_offset[i] = (inst_nf==NF2) ? {1'b0, uop_index_current[i][2:1]} : {1'b0, uop_index_current[i][1:0]};
-                  vs2_valid[i]  = 1'b1; 
+                  case(reduced_lmul)
+                    LMUL2:   vs2_offset[i] = (inst_nf==NF2) ? {2'b0, uop_index_current[i][1]} : uop_index_current[i][2:0];
+                    LMUL4:   vs2_offset[i] = (inst_nf==NF2) ? {1'b0, uop_index_current[i][2:1]} : {1'b0, uop_index_current[i][1:0]};
+                    default: vs2_offset[i] = 'b0;
+                  endcase
                 end
-                EMUL8: begin
-                  vs2_offset[i] = uop_index_current[i][2:0];
-                  vs2_valid[i]  = 1'b1; 
-                end
-                default: begin //EMUL1
-                  vs2_offset[i] = 'b0;
-                  vs2_valid[i]  = 1'b1; 
-                end
+                EMUL8:   vs2_offset[i] = uop_index_current[i][2:0];
+                default: vs2_offset[i] = 'b0; // LMUL1
               endcase
             end
             // 2:1
             {EEW16,EEW8},
             {EEW32,EEW16}: begin
               case(emul_vs2)
-                EMUL2: begin
-                  vs2_offset[i] = {2'b0, uop_index_current[i][0]};
-                  vs2_valid[i]  = 1'b1; 
-                end
+                EMUL2: vs2_offset[i] = reduced_lmul==LMUL1 ? {2'b0, uop_index_current[i][0]} : 'b0;
                 EMUL4: begin
-                  case(inst_nf)
-                    NF2:     vs2_offset[i] = {1'b0, uop_index_current[i][2], uop_index_current[i][0]};
-                    NF3:     vs2_offset[i] = {1'b0, uop_index_current[i][3:1] >= 3'd3, uop_index_current[i][0]};
-                    NF4:     vs2_offset[i] = {1'b0, uop_index_current[i][3], uop_index_current[i][0]};
-                    default: vs2_offset[i] = uop_index_current[i][2:0]; // NF1
+                  case(reduced_lmul)
+                    LMUL2: begin
+                      case(inst_nf)
+                        NF2:     vs2_offset[i] = {1'b0, uop_index_current[i][2], uop_index_current[i][0]};
+                        NF3:     vs2_offset[i] = {1'b0, uop_index_current[i][3:1] >= 3'd3, uop_index_current[i][0]};
+                        NF4:     vs2_offset[i] = {1'b0, uop_index_current[i][3], uop_index_current[i][0]};
+                        default: vs2_offset[i] = uop_index_current[i][2:0]; // NF1
+                      endcase
+                    end
+                    LMUL1:   vs2_offset[i] = {2'b0, uop_index_current[i][0]};
+                    default: vs2_offset[i] = 'b0;
                   endcase
-                  vs2_valid[i]  = 1'b1; 
                 end
                 EMUL8: begin
-                  vs2_offset[i] = (inst_nf==NF2) ? {uop_index_current[i][3:2], uop_index_current[i][0]} : uop_index_current[i][2:0];
-                  vs2_valid[i]  = 1'b1; 
+                  case(reduced_lmul)
+                    LMUL1,
+                    LMUL2,
+                    LMUL4:   vs2_offset[i] = inst_nf==NF2 ? {uop_index_current[i][3:2], uop_index_current[i][0]} : uop_index_current[i][2:0];
+                    default: vs2_offset[i] = 'b0; // LMUL1_2, LMUL1_4
+                  endcase
                 end
-                default: begin //EMUL1
-                  vs2_offset[i] = 'b0;
-                  vs2_valid[i]  = 1'b1; 
-                end
+                default: vs2_offset[i] = 'b0; // LMUL1
               endcase
             end
             // 4:1
             {EEW32,EEW8}: begin    
               case(emul_vs2)
-                EMUL2: begin
-                  vs2_offset[i] = {2'b0, uop_index_current[i][0]};
-                  vs2_valid[i]  = 1'b1; 
-                end
+                EMUL2,
                 EMUL4: begin
-                  vs2_offset[i] = {1'b0, uop_index_current[i][1:0]};
+                  case(reduced_lmul)
+                    LMUL1_2: vs2_offset[i] = {2'b0, uop_index_current[i][0]};
+                    LMUL1:   vs2_offset[i] = {1'b0, uop_index_current[i][1:0]};
+                    default: vs2_offset[i] = 'b0;
+                  endcase
                   vs2_valid[i]  = 1'b1; 
                 end
                 EMUL8: begin
-                  case(inst_nf)
-                    NF2:     vs2_offset[i] = {uop_index_current[i][3], uop_index_current[i][1:0]};
-                    NF3:     vs2_offset[i] = {uop_index_current[i][4:2] >= 3'd3, uop_index_current[i][1:0]};
-                    NF4:     vs2_offset[i] = {uop_index_current[i][4], uop_index_current[i][1:0]};
-                    default: vs2_offset[i] = uop_index_current[i][2:0];  //NF1
+                  case(reduced_lmul)
+                    LMUL2: begin
+                      case(inst_nf)
+                        NF2:     vs2_offset[i] = {uop_index_current[i][3], uop_index_current[i][1:0]};
+                        NF3:     vs2_offset[i] = {uop_index_current[i][4:2] >= 3'd3, uop_index_current[i][1:0]};
+                        NF4:     vs2_offset[i] = {uop_index_current[i][4], uop_index_current[i][1:0]};
+                        default: vs2_offset[i] = uop_index_current[i][2:0];  //NF1
+                      endcase
+                    end
+                    LMUL1:   vs2_offset[i] = {1'b0, uop_index_current[i][1:0]};
+                    LMUL1_2: vs2_offset[i] = {2'b0, uop_index_current[i][0]};
+                    default: vs2_offset[i] = 'b0;
                   endcase
                   vs2_valid[i]  = 1'b1; 
                 end
@@ -650,7 +624,7 @@ module rvv_backend_decode_unit_lsu_de2
   end
 
   // update vs2 index and eew 
-  always_comb begin
+always_comb begin
     for(int i=0;i<`NUM_DE_UOP;i++) begin: GET_VS2
       vs2_index[i] = inst_vs2 + {2'b0, vs2_offset[i]}; 
     end
@@ -687,31 +661,43 @@ module rvv_backend_decode_unit_lsu_de2
             {EEW16,EEW8},
             {EEW32,EEW16}: begin
               case(emul_vs2)
-                EMUL2: seg_field_index[i] = {2'b0, uop_index_current[i][0]};
+                EMUL2,
                 EMUL4: begin
-                  case(inst_nf)
-                    NF2:     seg_field_index[i] = {1'b0, uop_index_current[i][2], uop_index_current[i][0]};
-                    NF3:     seg_field_index[i] = {1'b0, uop_index_current[i]>='d6, uop_index_current[i][0]};
-                    NF4:     seg_field_index[i] = {1'b0, uop_index_current[i][3], uop_index_current[i][0]};
-                    default: seg_field_index[i] = 'b0;
+                  case(reduced_lmul)
+                    LMUL1: seg_field_index[i] = {2'b0, uop_index_current[i][0]};
+                    LMUL2: begin
+                      case(inst_nf)
+                        NF3:     seg_field_index[i] = {1'b0, uop_index_current[i]>='d6, uop_index_current[i][0]};
+                        NF4:     seg_field_index[i] = {1'b0, uop_index_current[i][3], uop_index_current[i][0]};
+                        default: seg_field_index[i] = {1'b0, uop_index_current[i][2], uop_index_current[i][0]};
+                      endcase
+                    end
+                    default: seg_field_index[i] = 'b0;  // LMUL1_2
                   endcase
                 end
-                EMUL8: seg_field_index[i] = (inst_nf==NF2) ? {uop_index_current[i][3:2], uop_index_current[i][0]} : uop_index_current[i][2:0];
+                EMUL8: begin
+                  case(reduced_lmul)
+                    LMUL1: seg_field_index[i] = {2'b0, uop_index_current[i][0]};
+                    LMUL2,
+                    LMUL4: seg_field_index[i] = {uop_index_current[i][3:2], uop_index_current[i][0]};  // NF2
+                    default: seg_field_index[i] = 'b0;  // LMUL1_2
+                  endcase
+                end
               endcase
             end
             // 4:1
             {EEW32,EEW8}: begin   
-              case(emul_vs2)
-                EMUL2: seg_field_index[i] = {2'b0, uop_index_current[i][0]};
-                EMUL4: seg_field_index[i] = {1'b0, uop_index_current[i][1:0]};
-                EMUL8: begin
+              case(reduced_lmul)
+                LMUL1_2: seg_field_index[i] = {2'b0, uop_index_current[i][0]};
+                LMUL1:   seg_field_index[i] = {1'b0, uop_index_current[i][1:0]};
+                LMUL2: begin
                   case(inst_nf)
-                    NF2:     seg_field_index[i] = {uop_index_current[i][3], uop_index_current[i][1:0]};
                     NF3:     seg_field_index[i] = {uop_index_current[i]>='d12, uop_index_current[i][1:0]};
                     NF4:     seg_field_index[i] = {uop_index_current[i][4], uop_index_current[i][1:0]};
-                    default: seg_field_index[i] = uop_index_current[i][2:0];
+                    default: seg_field_index[i] = {uop_index_current[i][3], uop_index_current[i][1:0]}; // NF2
                   endcase
                 end
+                default: seg_field_index[i] = 'b0;  // LMUL1_4
               endcase
             end
           endcase
@@ -728,19 +714,19 @@ module rvv_backend_decode_unit_lsu_de2
         // 2:1
         {EEW16,EEW8},
         {EEW32,EEW16}: begin
-          case(emul_vs2)
-            EMUL2,
-            EMUL4,
-            EMUL8:   pshrob_valid[i] = uop_index_current[i][0];
+          case(reduced_lmul)
+            LMUL1,
+            LMUL2,
+            LMUL4:   pshrob_valid[i] = uop_index_current[i][0];
             default: pshrob_valid[i] = 'b1;
           endcase
         end
         // 4:1
         {EEW32,EEW8}: begin   
-          case(emul_vs2)
-            EMUL2:   pshrob_valid[i] = uop_index_current[i][0];
-            EMUL4,
-            EMUL8:   pshrob_valid[i] = uop_index_current[i][1:0]==2'b11;
+          case(reduced_lmul)
+            LMUL1_2: pshrob_valid[i] = uop_index_current[i][0];
+            LMUL1,
+            LMUL2:   pshrob_valid[i] = uop_index_current[i][1:0]==2'b11;
             default: pshrob_valid[i] = 'b1;
           endcase
         end
@@ -763,42 +749,43 @@ module rvv_backend_decode_unit_lsu_de2
   generate
     for(j=0;j<`NUM_DE_UOP;j++) begin: ASSIGN_RES
     `ifdef TB_SUPPORT
-      assign uop[j].uop_pc                = lcmd.cmd.inst_pc;
+      assign uop[j].uop_pc              = lcmd.cmd.inst_pc;
+      assign uop[j].res_updating_end    = 'b1;
     `endif  
-      assign uop[j].uop_funct3            = inst_funct3;
-      assign uop[j].uop_funct6            = funct6_lsu;
-      assign uop[j].uop_exe_unit          = LSU; 
-      assign uop[j].uop_class             = uop_class;   
-      assign uop[j].vector_csr            = vector_csr[j];  
-      assign uop[j].vs_evl                = lcmd.evl;
-      assign uop[j].ignore_vma            = 'b0;
-      assign uop[j].ignore_vta            = 'b0;
-      assign uop[j].force_vma_agnostic    = lcmd.force_vma_agnostic;
-      assign uop[j].force_vta_agnostic    = lcmd.force_vta_agnostic;
-      assign uop[j].vm                    = inst_vm;
-      assign uop[j].v0_valid              = 'b1;          
-      assign uop[j].dst_index             = vd_index[j];          
-      assign uop[j].vd_eew                = lcmd.eew_vd;  
-      assign uop[j].vd_valid              = vd_valid;
-      assign uop[j].vs3_valid             = vs3_valid;
-      assign uop[j].xd_valid              = 'b0; 
+      assign uop[j].uop_funct3          = inst_funct3;
+      assign uop[j].uop_funct6          = funct6_lsu;
+      assign uop[j].uop_exe_unit        = LSU; 
+      assign uop[j].uop_class           = uop_class;   
+      assign uop[j].vector_csr          = vector_csr[j];  
+      assign uop[j].vs_evl              = lcmd.evl;
+      assign uop[j].ignore_vma          = 'b0;
+      assign uop[j].ignore_vta          = 'b0;
+      assign uop[j].force_vma_agnostic  = lcmd.force_vma_agnostic;
+      assign uop[j].force_vta_agnostic  = lcmd.force_vta_agnostic;
+      assign uop[j].vm                  = inst_vm;
+      assign uop[j].v0_valid            = 'b1;          
+      assign uop[j].dst_index           = vd_index[j];          
+      assign uop[j].vd_eew              = lcmd.eew_vd;  
+      assign uop[j].vd_valid            = vd_valid;
+      assign uop[j].vs3_valid           = vs3_valid;
+      assign uop[j].xd_valid            = 'b0; 
     `ifdef ZVE32F_ON
-      assign uop[j].fd_valid              = 'b0; 
+      assign uop[j].fd_valid            = 'b0; 
     `endif
-      assign uop[j].vs1                   = 'b0;              
-      assign uop[j].vs1_eew               = EEW_NONE;           
-      assign uop[j].vs1_valid             = 'b0;
-      assign uop[j].vs2_index 	          = vs2_index[j]; 	       
-      assign uop[j].vs2_eew               = lcmd.eew_vs2;
-      assign uop[j].vs2_valid             = vs2_valid[j];
-      assign uop[j].rs1_data              = 'b0;           
-      assign uop[j].rs1_data_valid        = 'b0;    
-      assign uop[j].uop_index             = uop_index[j];         
-      assign uop[j].first_uop_valid       = first_uop_valid[j];   
-      assign uop[j].last_uop_valid        = last_uop_valid[j];    
-      assign uop[j].seg_field_index       = seg_field_index[j];   
-      assign uop[j].pshrob_valid          = pshrob_valid[j];   
-      assign uop[j].pshlsu_valid          = pshlsu_valid;
+      assign uop[j].vs1                 = 'b0;              
+      assign uop[j].vs1_eew             = EEW_NONE;           
+      assign uop[j].vs1_valid           = 'b0;
+      assign uop[j].vs2_index 	        = vs2_index[j]; 	       
+      assign uop[j].vs2_eew             = lcmd.eew_vs2;
+      assign uop[j].vs2_valid           = vs2_valid[j];
+      assign uop[j].rs1_data            = 'b0;           
+      assign uop[j].rs1_data_valid      = 'b0;    
+      assign uop[j].uop_index           = uop_index[j];         
+      assign uop[j].first_uop_valid     = first_uop_valid[j];   
+      assign uop[j].last_uop_valid      = last_uop_valid[j];    
+      assign uop[j].seg_field_index     = seg_field_index[j];   
+      assign uop[j].pshrob_valid        = pshrob_valid[j];   
+      assign uop[j].pshlsu_valid        = pshlsu_valid;   
     end
   endgenerate
 

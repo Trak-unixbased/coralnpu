@@ -73,7 +73,6 @@ module rvv_backend_falu_unit(
   logic [`VLEN-1:0]                         src3;
   logic [`VLENW-1:0][2:0][`WORD_WIDTH-1:0]  op_i;
   EEW_e                                     vd_eew;
-  fpnew_pkg::roundmode_e                    rnd_mod_dec;
   fpnew_pkg::roundmode_e                    rnd_mod_i;    // also opcode
   fpnew_pkg::operation_e                    op_type;
   logic                                     op_mod;
@@ -211,25 +210,13 @@ module rvv_backend_falu_unit(
     endcase
   end
 
-  // rounding mode
-  always_comb begin
-    case(falu_uop.frm)
-      FRNE:    rnd_mod_dec = fpnew_pkg::RNE;
-      FRTZ:    rnd_mod_dec = fpnew_pkg::RTZ;
-      FRDN:    rnd_mod_dec = fpnew_pkg::RDN;
-      FRUP:    rnd_mod_dec = fpnew_pkg::RUP;
-      FRMM:    rnd_mod_dec = fpnew_pkg::RMM;
-      default: rnd_mod_dec = fpnew_pkg::DYN;
-    endcase
-  end
-
   //decode for instruction
   always_comb begin
     // default
     for(int i=0;i<`VLENW;i++) begin
       op_i[i] = {src3[i*`WORD_WIDTH+:`WORD_WIDTH], src2[i*`WORD_WIDTH+:`WORD_WIDTH], src1[i*`WORD_WIDTH+:`WORD_WIDTH]};
     end
-    rnd_mod_i = rnd_mod_dec;
+    rnd_mod_i = fpnew_pkg::roundmode_e'(falu_uop.frm);
     op_type   = fpnew_pkg::FMADD;
     op_mod    = 1'b0;
     src_fmt   = fpnew_pkg::FP32;

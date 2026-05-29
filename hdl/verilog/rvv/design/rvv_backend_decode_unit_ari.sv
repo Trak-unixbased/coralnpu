@@ -43,6 +43,7 @@ module rvv_backend_decode_unit_ari
   logic   [`VL_WIDTH-1:0]             evl;
   RVVSEW                              csr_sew;
   RVVLMUL                             csr_lmul;
+  RVVLMUL                             reduced_lmul;  
   EMUL_e                              emul_vd;          
   EMUL_e                              emul_vs2;          
   EMUL_e                              emul_vs1;          
@@ -77,7 +78,6 @@ module rvv_backend_decode_unit_ari
   logic                               check_frm;
   logic   [`UOP_INDEX_WIDTH-1:0]      uop_vstart;         
   logic   [`UOP_INDEX_WIDTH-1:0]      uop_index_max;         
-  FUNCT6_u                            funct6_ari;
 
   logic                               force_vma_agnostic; 
   logic                               force_vta_agnostic; 
@@ -102,7 +102,8 @@ module rvv_backend_decode_unit_ari
   assign csr_vstart     = inst_valid ? inst.arch_state.vstart : 'b0;
   assign csr_vl         = inst_valid ? inst.arch_state.vl : 'b0;
   assign csr_sew        = inst_valid ? inst.arch_state.sew : SEW8;
-  assign csr_lmul       = inst_valid ? inst.arch_state.lmul : LMUL1;  
+  assign csr_lmul       = inst_valid ? inst.arch_state.lmul_orig : LMUL1;
+  assign reduced_lmul   = inst_valid ? inst.arch_state.lmul : LMUL1;  
 
   always_comb begin
     // initial the data
@@ -128,11 +129,12 @@ module rvv_backend_decode_unit_ari
   // get EMUL
   always_comb begin
     // initial
-    emul_vd  = EMUL_NONE;
-    emul_vs2 = EMUL_NONE;
-    emul_vs1 = EMUL_NONE;
-    emul_max = EMUL_NONE;
-    
+    emul_vd       = EMUL_NONE;
+    emul_vs2      = EMUL_NONE;
+    emul_vs1      = EMUL_NONE;
+    emul_max      = EMUL_NONE;
+    uop_index_max = 'd0;
+
     case(inst_funct3)
       OPIVV: begin
         // OPI* instruction
@@ -159,6 +161,12 @@ module rvv_backend_decode_unit_ari
           VSSUBU,
           VSSUB,
           VSMUL_VMVNRR: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -198,6 +206,12 @@ module rvv_backend_decode_unit_ari
           VMSLE,
           VMSLTU,
           VMSLT: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -233,6 +247,12 @@ module rvv_backend_decode_unit_ari
           VNSRA,
           VNCLIPU,
           VNCLIP:begin
+            case(reduced_lmul)
+              LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2: begin
@@ -263,6 +283,12 @@ module rvv_backend_decode_unit_ari
           end
           
           VMERGE_VMV: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -300,6 +326,12 @@ module rvv_backend_decode_unit_ari
           // widening instructions
           VWREDSUMU,
           VWREDSUM: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -357,6 +389,9 @@ module rvv_backend_decode_unit_ari
                     emul_vs2    = EMUL1;
                     emul_vs1    = EMUL2;
                     emul_max    = EMUL2;
+                    case(reduced_lmul)
+                      LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                    endcase
                   end
                   SEW16,
                   SEW32: begin
@@ -374,18 +409,28 @@ module rvv_backend_decode_unit_ari
                     emul_vs2    = EMUL2;
                     emul_vs1    = EMUL4;
                     emul_max    = EMUL4;
+                    case(reduced_lmul)
+                      LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                      LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                    endcase
                   end
                   SEW16: begin
                     emul_vd     = EMUL2;
                     emul_vs2    = EMUL2;
                     emul_vs1    = EMUL2;
                     emul_max    = EMUL2;
+                    case(reduced_lmul)
+                      LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                    endcase
                   end
                   SEW32: begin
                     emul_vd     = EMUL2;
                     emul_vs2    = EMUL2;
                     emul_vs1    = EMUL1;
                     emul_max    = EMUL2;
+                    case(reduced_lmul)
+                      LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                    endcase
                   end
                 endcase
               end
@@ -396,22 +441,41 @@ module rvv_backend_decode_unit_ari
                     emul_vs2    = EMUL4;
                     emul_vs1    = EMUL8;
                     emul_max    = EMUL8;
+                    case(reduced_lmul)
+                      LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                      LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                      LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+                    endcase
                   end
                   SEW16: begin
                     emul_vd     = EMUL4;
                     emul_vs2    = EMUL4;
                     emul_vs1    = EMUL4;
                     emul_max    = EMUL4;
+                    case(reduced_lmul)
+                      LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                      LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                    endcase
                   end
                   SEW32: begin
                     emul_vd     = EMUL4;
                     emul_vs2    = EMUL4;
                     emul_vs1    = EMUL2;
                     emul_max    = EMUL4;
+                    case(reduced_lmul)
+                      LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                      LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                    endcase
                   end
                 endcase
               end
               LMUL8: begin
+                case(reduced_lmul)
+                  LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                  LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                  LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+                endcase
+
                 case(csr_sew)
                   SEW16: begin
                     emul_vd     = EMUL8;
@@ -460,6 +524,12 @@ module rvv_backend_decode_unit_ari
           VSLIDEDOWN,
           VSMUL_VMVNRR,
           VSLIDEUP_RGATHEREI16: begin        
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -497,6 +567,12 @@ module rvv_backend_decode_unit_ari
           VMSLT,
           VMSGTU,
           VMSGT: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -528,6 +604,12 @@ module rvv_backend_decode_unit_ari
           VNSRA,
           VNCLIPU,
           VNCLIP:begin
+            case(reduced_lmul)
+              LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2: begin
@@ -554,6 +636,12 @@ module rvv_backend_decode_unit_ari
           end
 
           VMERGE_VMV: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -605,6 +693,12 @@ module rvv_backend_decode_unit_ari
           VRSUB,
           VSLIDEDOWN,
           VSLIDEUP_RGATHEREI16: begin        
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -639,6 +733,12 @@ module rvv_backend_decode_unit_ari
           VMSLE,
           VMSGTU,
           VMSGT: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -670,6 +770,12 @@ module rvv_backend_decode_unit_ari
           VNSRA,
           VNCLIPU,
           VNCLIP:begin
+            case(reduced_lmul)
+              LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2: begin
@@ -696,6 +802,12 @@ module rvv_backend_decode_unit_ari
           end
           
           VMERGE_VMV: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -730,24 +842,27 @@ module rvv_backend_decode_unit_ari
             // vmv<nr>r.v instruction
             case(inst_nr)
               NREG1: begin
-                emul_vd     = EMUL1;
-                emul_vs2    = EMUL1;
-                emul_max    = EMUL1;
+                emul_vd       = EMUL1;
+                emul_vs2      = EMUL1;
+                emul_max      = EMUL1;
               end
               NREG2: begin
-                emul_vd     = EMUL2;
-                emul_vs2    = EMUL2;
-                emul_max    = EMUL2;
+                emul_vd       = EMUL2;
+                emul_vs2      = EMUL2;
+                emul_max      = EMUL2;
+                uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
               end
               NREG4: begin
-                emul_vd     = EMUL4;
-                emul_vs2    = EMUL4;
-                emul_max    = EMUL4;
+                emul_vd       = EMUL4;
+                emul_vs2      = EMUL4;
+                emul_max      = EMUL4;
+                uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
               end
               NREG8: begin
-                emul_vd     = EMUL8;
-                emul_vs2    = EMUL8;
-                emul_max    = EMUL8;
+                emul_vd       = EMUL8;
+                emul_vs2      = EMUL8;
+                emul_max      = EMUL8;
+                uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
               end
             endcase
           end
@@ -768,6 +883,12 @@ module rvv_backend_decode_unit_ari
           VWMACCU,
           VWMACC,
           VWMACCSU: begin
+            case(reduced_lmul)
+              LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2: begin
@@ -802,6 +923,12 @@ module rvv_backend_decode_unit_ari
           VWSUBU_W,
           VWADD_W,
           VWSUB_W: begin
+            case(reduced_lmul)
+              LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2: begin
@@ -835,6 +962,12 @@ module rvv_backend_decode_unit_ari
             case(vs1_opcode) 
               VZEXT_VF2,
               VSEXT_VF2: begin
+                case(reduced_lmul)
+                  LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                  LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                  LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+                endcase
+
                 case(csr_lmul)
                   LMUL1_2,
                   LMUL1: begin
@@ -861,6 +994,12 @@ module rvv_backend_decode_unit_ari
               end
               VZEXT_VF4,
               VSEXT_VF4: begin
+                case(reduced_lmul)
+                  LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                  LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                  LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+                endcase
+
                 case(csr_lmul)
                   LMUL1: begin
                     emul_vd     = EMUL1;
@@ -904,6 +1043,12 @@ module rvv_backend_decode_unit_ari
           VAADD,
           VASUBU,
           VASUB: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -943,6 +1088,12 @@ module rvv_backend_decode_unit_ari
           VREDAND,
           VREDOR,
           VREDXOR: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -1009,6 +1160,12 @@ module rvv_backend_decode_unit_ari
                 emul_max    = EMUL1;
               end
               VIOTA: begin
+                case(reduced_lmul)
+                  LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                  LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                  LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+                endcase
+
                 case(csr_lmul)
                   LMUL1_4,
                   LMUL1_2,
@@ -1035,6 +1192,12 @@ module rvv_backend_decode_unit_ari
                 endcase
               end
               VID: begin
+                case(reduced_lmul)
+                  LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                  LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                  LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+                endcase
+
                 case(csr_lmul)
                   LMUL1_4,
                   LMUL1_2,
@@ -1060,6 +1223,12 @@ module rvv_backend_decode_unit_ari
           end
 
           VCOMPRESS: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -1105,6 +1274,12 @@ module rvv_backend_decode_unit_ari
           VWMACCU,
           VWMACC,
           VWMACCSU: begin
+            case(reduced_lmul)
+              LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2: begin
@@ -1135,6 +1310,12 @@ module rvv_backend_decode_unit_ari
           VWSUBU_W,
           VWADD_W,
           VWSUB_W: begin
+            case(reduced_lmul)
+              LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2: begin
@@ -1177,6 +1358,12 @@ module rvv_backend_decode_unit_ari
           VAADD,
           VASUBU,
           VASUB: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -1204,6 +1391,12 @@ module rvv_backend_decode_unit_ari
           end
 
           VWMACCUS: begin
+            case(reduced_lmul)
+              LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2: begin
@@ -1238,6 +1431,12 @@ module rvv_backend_decode_unit_ari
           VREDAND,
           VREDOR,
           VREDXOR: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -1277,6 +1476,12 @@ module rvv_backend_decode_unit_ari
 
           VSLIDE1UP,
           VSLIDE1DOWN: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -1325,6 +1530,12 @@ module rvv_backend_decode_unit_ari
           VFSGNJ,
           VFSGNJN,
           VFSGNJX: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -1356,6 +1567,12 @@ module rvv_backend_decode_unit_ari
           end
 
           VFUNARY1: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(vs1_opcode)
               VFSQRT,
               VFRSQRT7,
@@ -1393,6 +1610,12 @@ module rvv_backend_decode_unit_ari
           VMFNE,           
           VMFLT,           
           VMFLE: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -1427,6 +1650,12 @@ module rvv_backend_decode_unit_ari
             case(vs1_opcode)
               `ifdef ZVFBFWMA_ON
               VFNCVTBF16: begin
+                case(reduced_lmul)
+                  LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                  LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                  LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+                endcase
+
                 case(csr_lmul)
                   LMUL1_4,
                   LMUL1_2: begin
@@ -1452,6 +1681,12 @@ module rvv_backend_decode_unit_ari
                 endcase 
               end
               VFWCVTBF16: begin
+                case(reduced_lmul)
+                  LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                  LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                  LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+                endcase
+
                 case(csr_lmul)
                   LMUL1_4,
                   LMUL1_2: begin
@@ -1483,6 +1718,12 @@ module rvv_backend_decode_unit_ari
               VFCVT_RTZXFV,
               VFCVT_FXUV,
               VFCVT_FXV: begin
+                case(reduced_lmul)
+                  LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+                  LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+                  LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+                endcase
+
                 case(csr_lmul)
                   LMUL1_4,
                   LMUL1_2,
@@ -1515,6 +1756,12 @@ module rvv_backend_decode_unit_ari
           VFREDUSUM,       
           VFREDMAX,       
           VFREDMIN: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -1554,6 +1801,12 @@ module rvv_backend_decode_unit_ari
 
           `ifdef ZVFBFWMA_ON
           VFWMACCBF16: begin
+            case(reduced_lmul)
+              LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
              case(csr_lmul)
               LMUL1_4,
               LMUL1_2: begin
@@ -1609,6 +1862,12 @@ module rvv_backend_decode_unit_ari
           VFSGNJX,
           VFSLIDE1UP,      
           VFSLIDE1DOWN: begin  
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -1641,6 +1900,12 @@ module rvv_backend_decode_unit_ari
           VMFLE,           
           VMFGT,           
           VMFGE: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -1668,6 +1933,12 @@ module rvv_backend_decode_unit_ari
           end
 
           VFMERGE_VFMV: begin
+            case(reduced_lmul)
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL8: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
             case(csr_lmul)
               LMUL1_4,
               LMUL1_2,
@@ -1707,7 +1978,13 @@ module rvv_backend_decode_unit_ari
 
           `ifdef ZVFBFWMA_ON
           VFWMACCBF16: begin
-             case(csr_lmul)
+            case(reduced_lmul)
+              LMUL1: uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
+              LMUL2: uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
+              LMUL4: uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
+            endcase
+
+            case(csr_lmul)
               LMUL1_4,
               LMUL1_2: begin
                 emul_vd     = EMUL1;
@@ -3119,11 +3396,28 @@ module rvv_backend_decode_unit_ari
   assign check_sew = (eew_max != EEW_NONE);
     
   // check the validation of EMUL
-  assign check_lmul = (emul_max != EMUL_NONE); 
-  
+  assign check_lmul = (emul_max != EMUL_NONE);
+
   // effect vstart
   always_comb begin
     evstart = {1'b0, csr_vstart};
+    
+    case(inst_funct3)
+      OPIVX: begin
+        case(inst_funct6)
+          VSLIDEUP_RGATHEREI16: begin 
+            if ($unsigned((`XLEN)'(csr_vstart))<$unsigned(rs1)) 
+              evstart = (|rs1[`XLEN-1:`VSTART_WIDTH]) ? (`VL_WIDTH)'('1) : rs1[`VL_WIDTH-1:0];
+          end
+        endcase
+      end
+
+      OPIVI: begin
+        case(inst_funct6)
+          VSLIDEUP_RGATHEREI16: if (csr_vstart<(`VSTART_WIDTH)'(inst_imm)) evstart = (`VL_WIDTH)'(inst_imm);
+        endcase
+      end
+    endcase
   end
 
   // get evl
@@ -3305,17 +3599,6 @@ module rvv_backend_decode_unit_ari
         end
       endcase
     end
-  end
-
-  // get the max uop index 
-  always_comb begin
-    case(emul_max)
-      EMUL1:   uop_index_max = (`UOP_INDEX_WIDTH)'('d0);
-      EMUL2:   uop_index_max = (`UOP_INDEX_WIDTH)'('d1);
-      EMUL4:   uop_index_max = (`UOP_INDEX_WIDTH)'('d3);
-      EMUL8:   uop_index_max = (`UOP_INDEX_WIDTH)'('d7);
-      default: uop_index_max = (`UOP_INDEX_WIDTH)'('d0);
-    endcase
   end
 
   // update force_vma_agnostic
