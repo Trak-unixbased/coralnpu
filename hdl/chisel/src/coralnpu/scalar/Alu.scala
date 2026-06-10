@@ -60,24 +60,24 @@ object AluOp extends ChiselEnum {
   val ZEXTH = Value
 }
 
-class AluCmd extends Bundle {
-  val addr = UInt(5.W)
+class AluCmd(p: Parameters) extends Bundle {
+  val addr = UInt(log2Ceil(p.scalarRegCount).W)
   val op = AluOp()
 }
 
 class Alu(p: Parameters) extends Module {
   val io = IO(new Bundle {
     // Decode cycle.
-    val req = Flipped(Valid(new AluCmd))
+    val req = Flipped(Valid(new AluCmd(p)))
 
     // Execute cycle.
-    val rs1 = Flipped(new RegfileReadDataIO)
-    val rs2 = Flipped(new RegfileReadDataIO)
-    val rd  = Valid(Flipped(new RegfileWriteDataIO))
+    val rs1 = Flipped(new RegfileReadDataIO(p))
+    val rs2 = Flipped(new RegfileReadDataIO(p))
+    val rd  = Valid(Flipped(new RegfileWriteDataIO(p)))
   })
 
   val valid = RegInit(false.B)
-  val addr = RegInit(0.U(5.W))
+  val addr = RegInit(0.U(log2Ceil(p.scalarRegCount).W))
   val op = RegInit(AluOp.ADD)
 
   // Pulse the cycle after the decoded request.
@@ -92,7 +92,7 @@ class Alu(p: Parameters) extends Module {
 
   val rs1 = io.rs1.data
   val rs2 = io.rs2.data
-  val shamt = rs2(4,0)
+  val shamt = rs2(log2Ceil(p.xlen)-1,0)
 
   io.rd.valid := valid
   io.rd.bits.addr  := addr
@@ -100,8 +100,7 @@ class Alu(p: Parameters) extends Module {
   val r2IsGreater = rs1.asSInt < rs2.asSInt
   val r2IsGreaterU = rs1 < rs2
 
-  val rsWidth  = 32
-  val rsWidthH = 32/2
+  val rsWidth  = p.xlen
 
   def SignExtend(x: UInt, length: Int): UInt = {
     val ext = Wire(SInt(length.W))
@@ -125,9 +124,9 @@ class Alu(p: Parameters) extends Module {
     AluOp.XOR  -> (rs1 ^ rs2),
     AluOp.OR   -> (rs1 | rs2),
     AluOp.AND  -> (rs1 & rs2),
-    AluOp.SLL  -> ((rs1 << shamt)(31,0)),
-    AluOp.SRL  -> ((rs1 >> shamt)(31,0)),
-    AluOp.SRA  -> (((rs1.asSInt >> shamt).asUInt)(31,0)),
+    AluOp.SLL  -> ((rs1 << shamt)(p.xlen-1,0)),
+    AluOp.SRL  -> ((rs1 >> shamt)(p.xlen-1,0)),
+    AluOp.SRA  -> (((rs1.asSInt >> shamt).asUInt)(p.xlen-1,0)),
     AluOp.LUI  -> rs2,
     // ZBB
     AluOp.ANDN -> (rs1 & ~rs2),
@@ -141,12 +140,12 @@ class Alu(p: Parameters) extends Module {
     AluOp.MIN  -> Mux(r2IsGreater,  rs1, rs2),
     AluOp.MINU -> Mux(r2IsGreaterU, rs1, rs2),
     AluOp.SEXTB -> SignExtend(rs1(7, 0), rsWidth),
-    AluOp.SEXTH -> SignExtend(rs1(rsWidthH-1,0), rsWidth),
+    AluOp.SEXTH -> SignExtend(rs1(15, 0), rsWidth),
     AluOp.ROL -> rs1.rotateLeft(shamt),
     AluOp.ROR -> rs1.rotateRight(shamt),
     AluOp.ORCB -> Orcb(rs1, rsWidth),
     AluOp.REV8 -> Cat(UIntToVec(rs1, 8)),
-    AluOp.ZEXTH -> rs1(rsWidthH - 1, 0),
+    AluOp.ZEXTH -> rs1(15, 0),
   ))
 
 

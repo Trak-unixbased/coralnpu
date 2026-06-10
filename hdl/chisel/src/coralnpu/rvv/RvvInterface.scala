@@ -36,23 +36,23 @@ class RvvConfigState(p: Parameters) extends Bundle {
    * See section 3.4 of the RISC-V Vector Specification v1.0.
    */
   def vtype: UInt = {
-    Cat(vill, 0.U(23.W), ma, ta, sew, lmul_orig)
+    Cat(vill, 0.U((p.xlen - 9).W), ma, ta, sew, lmul_orig)
   }
 }
 
 class Lsu2Rvv(p: Parameters) extends Bundle {
-  val addr = UInt(5.W)
+  val addr = UInt(p.rvvRegCountWidth.W)
   val data = UInt(p.rvvVlen.W)
   val last = Bool()
 }
 
 class Rvv2Lsu(p: Parameters) extends Bundle {
   val idx = Valid(new Bundle {
-    val addr = UInt(5.W)
+    val addr = UInt(p.rvvRegCountWidth.W)
     val data = UInt(p.rvvVlen.W)
   })
   val vregfile = Valid(new Bundle {
-    val addr = UInt(5.W)
+    val addr = UInt(p.rvvRegCountWidth.W)
     val data = UInt(p.rvvVlen.W)
   })
   val mask = Valid(UInt(p.rvvVlenb.W))
@@ -61,11 +61,11 @@ class Rvv2Lsu(p: Parameters) extends Bundle {
 class RvvCoreIO(p: Parameters) extends Bundle {
     // Decode Cycle.
     val inst = Vec(p.instructionLanes,
-        Flipped(Decoupled(new RvvCompressedInstruction)))
+        Flipped(Decoupled(new RvvCompressedInstruction(p))))
 
     // Execute cycle.
-    val rs = Vec(p.instructionLanes * 2, Flipped(new RegfileReadDataIO))
-    val rd = Vec(p.instructionLanes, Valid(new RegfileWriteDataIO))
+    val rs = Vec(p.instructionLanes * 2, Flipped(new RegfileReadDataIO(p)))
+    val rd = Vec(p.instructionLanes, Valid(new RegfileWriteDataIO(p)))
     val frs = Vec(p.instructionLanes, Input(UInt(32.W)))
 
     val rvv2lsu = Vec(2, Decoupled(new Rvv2Lsu(p)))
@@ -75,11 +75,11 @@ class RvvCoreIO(p: Parameters) extends Bundle {
     val configState = Output(Valid(new RvvConfigState(p)))
 
     // Async scalar regfile writes.
-    val async_rd = Decoupled(new RegfileWriteDataIO)
-    val async_frd = Decoupled(new RegfileWriteDataIO)
+    val async_rd = Decoupled(new RegfileWriteDataIO(p))
+    val async_frd = Decoupled(new RegfileWriteDataIO(p))
 
     // Async trap.
-    val trap = Output(Valid(new RvvCompressedInstruction))
+    val trap = Output(Valid(new RvvCompressedInstruction(p)))
 
     // Csr Interface.
     val csr = new RvvCsrIO(p)

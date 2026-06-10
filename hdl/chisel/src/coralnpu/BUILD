@@ -205,6 +205,7 @@ chisel_test(
         "-P",  # Allows parallel tests.
     ],
     deps = [
+        ":coralnpu_base",
         ":coralnpu_rvv",
         "//hdl/chisel/src/common:testing",
     ],

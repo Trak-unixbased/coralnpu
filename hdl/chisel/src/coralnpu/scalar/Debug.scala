@@ -95,16 +95,16 @@ class DebugModule(p: Parameters) extends Module {
     val nHart = 1
     val io = IO(new Bundle {
         val ext = new DebugModuleIO(p)
-        val csr = Output(Valid(new CsrCmd))
-        val csr_rs1 = Output(UInt(32.W))
-        val csr_rd = Input(Valid(UInt(32.W)))
-        val scalar_rd  = Decoupled(new RegfileWriteDataIO)
+        val csr = Output(Valid(new CsrCmd(p)))
+        val csr_rs1 = Output(UInt(p.xlen.W))
+        val csr_rd = Input(Valid(UInt(p.xlen.W)))
+        val scalar_rd  = Decoupled(new RegfileWriteDataIO(p))
         val scalar_rs = new Bundle {
-            val idx = Output(UInt(5.W))
-            val data = Input(UInt(32.W))
+            val idx = Output(UInt(log2Ceil(p.scalarRegCount).W))
+            val data = Input(UInt(p.xlen.W))
         }
-        val float_rd = Option.when(p.enableFloat)(Flipped(new FRegfileWrite))
-        val float_rs = Option.when(p.enableFloat)(Flipped(new FRegfileRead))
+        val float_rd = Option.when(p.enableFloat)(Flipped(new FRegfileWrite(p)))
+        val float_rs = Option.when(p.enableFloat)(Flipped(new FRegfileRead(p)))
         val itcm = new FabricIO(p)
         val dtcm = new FabricIO(p)
 
@@ -191,8 +191,8 @@ class DebugModule(p: Parameters) extends Module {
     val cmdtypeIsAccessRegister = (req.bits.cmdtype === AccessRegisterCommand.Cmdtype)
     val cmdtypeIsAccessMemory = (req.bits.cmdtype === AccessMemoryCommand.Cmdtype)
     val regnoIsCsr = (req.bits.regno >= 0.U(16.W)) && (req.bits.regno < "x1000".U(16.W))
-    val regnoIsScalar = (req.bits.regno >= "x1000".U(16.W)) && (req.bits.regno < "x1020".U(16.W))
-    val regnoIsFloat = (req.bits.regno >= "x1020".U(16.W) && (req.bits.regno < "x1040".U(16.W)))
+    val regnoIsScalar = (req.bits.regno >= "x1000".U(16.W)) && (req.bits.regno < (0x1000 + p.scalarRegCount).U(16.W))
+    val regnoIsFloat = (req.bits.regno >= (0x1000 + p.scalarRegCount).U(16.W) && (req.bits.regno < (0x1000 + p.scalarRegCount + p.floatRegCount).U(16.W)))
     val regnoInvalid = !regnoIsCsr && !regnoIsScalar && !regnoIsFloat
     val sizeInvalid = (req.bits.aarsize =/= 2.U(3.W))
 
@@ -264,20 +264,16 @@ class DebugModule(p: Parameters) extends Module {
         io.float_rs.get.addr := floatRegno
     }
 
-    val data0ItcmReadData =
-            MuxCase(0.U(32.W), Seq(
-                (data1(3,2) === 0.U) -> io.itcm.readData.bits(31, 0),
-                (data1(3,2) === 1.U) -> io.itcm.readData.bits(63, 32),
-                (data1(3,2) === 2.U) -> io.itcm.readData.bits(95, 64),
-                (data1(3,2) === 3.U) -> io.itcm.readData.bits(127, 96),
-            ))
-    val data0DtcmReadData =
-            MuxCase(0.U(32.W), Seq(
-                (data1(3,2) === 0.U) -> io.dtcm.readData.bits(31, 0),
-                (data1(3,2) === 1.U) -> io.dtcm.readData.bits(63, 32),
-                (data1(3,2) === 2.U) -> io.dtcm.readData.bits(95, 64),
-                (data1(3,2) === 3.U) -> io.dtcm.readData.bits(127, 96),
-            ))
+    val itcmWords = p.axi2DataBits / 32
+    val itcmWordSel = data1(log2Ceil(p.axi2DataBits / 8) - 1, 2)
+    val data0ItcmReadData = MuxCase(0.U(32.W), (0 until itcmWords).map(i =>
+        (itcmWordSel === i.U) -> io.itcm.readData.bits((i+1)*32 - 1, i*32)
+    ))
+    val dtcmWords = p.axi2DataBits / 32
+    val dtcmWordSel = data1(log2Ceil(p.axi2DataBits / 8) - 1, 2)
+    val data0DtcmReadData = MuxCase(0.U(32.W), (0 until dtcmWords).map(i =>
+        (dtcmWordSel === i.U) -> io.dtcm.readData.bits((i+1)*32 - 1, i*32)
+    ))
     val data0Priv = RegNext(data0, 0.U(32.W))
     data0 := MuxCase(data0, Seq(
         (req.valid && req.bits.isAddrData0 && req.bits.isWrite) -> req.bits.data,

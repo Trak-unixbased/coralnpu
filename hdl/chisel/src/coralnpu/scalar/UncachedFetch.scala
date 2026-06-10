@@ -336,12 +336,12 @@ class Fetcher(p: Parameters) extends Module {
 
 class FetchControl(p: Parameters) extends Module {
     val io = IO(new Bundle {
-        val fetchFault = Valid(UInt(32.W))
+        val fetchFault = Valid(UInt(p.programCounterBits.W))
         val csr = new CsrInIO(p)
-        val iflush = Input(Valid(UInt(32.W)))
+        val iflush = Input(Valid(UInt(p.programCounterBits.W)))
         val branch = Input(Valid(UInt(p.fetchAddrBits.W)))
         val fetchData = Flipped(Decoupled(new FetchResponse(p)))
-        val linkPort = Flipped(new RegfileLinkPortIO)
+        val linkPort = Flipped(new RegfileLinkPortIO(p))
 
         val fetchAddr = Irrevocable(UInt(p.fetchAddrBits.W))
         val flushTx = Output(Bool())

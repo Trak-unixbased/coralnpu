@@ -66,9 +66,9 @@ object Parameters {
   }
 }
 
-class Parameters(var m: Seq[MemoryRegion] = Seq(), val hartId: Int = 0) {
+class Parameters(var m: Seq[MemoryRegion] = Seq(), val hartId: Int = 0, val xlen: Int = 32) {
   // Machine.
-  val programCounterBits = 32
+  val programCounterBits = xlen
   val instructionBits = 32
   val instructionLanes = 4
 
@@ -89,16 +89,19 @@ class Parameters(var m: Seq[MemoryRegion] = Seq(), val hartId: Int = 0) {
   // It is smaller, but has small rounding errors.
   val floatPulpDivsqrt = 0
 
-  // Retirement buffer
+  val scalarRegCount = 32
+  val scalarRegCountWidth = log2Ceil(scalarRegCount)
+  val floatRegCount = 32
   val floatRegfileBaseAddr = 32
+  val floatRegCountWidth = log2Ceil(floatRegCount)
   val rvvRegfileBaseAddr = 64
   val rvvRegCount = 32
+  val rvvRegCountWidth = log2Ceil(rvvRegCount)
   val retirementBufferSize = 8
   def retirementBufferIdxWidth: Int = {
-    val scalarRegCount = 32
-    val floatRegCount = (if (enableFloat) { 32 } else { 0 })
+    val activeFloatRegCount = (if (enableFloat) { floatRegCount } else { 0 })
     // +2 is for the "no write" and "store" dummy registers.
-    log2Ceil(scalarRegCount + floatRegCount + rvvRegCount + 2)
+    log2Ceil(scalarRegCount + activeFloatRegCount + rvvRegCount + 2)
   }
 
   // L0ICache Fetch unit.
@@ -106,7 +109,7 @@ class Parameters(var m: Seq[MemoryRegion] = Seq(), val hartId: Int = 0) {
   val fetchCacheBytes = 1024
 
   // Scalar Core Fetch bus.
-  val fetchAddrBits = 32   // do not change
+  val fetchAddrBits = programCounterBits   // do not change
   var fetchDataBits = 256  // do not change
   def fetchInstrSlots: Int = {
     assert(fetchDataBits % 32 == 0)
@@ -116,7 +119,7 @@ class Parameters(var m: Seq[MemoryRegion] = Seq(), val hartId: Int = 0) {
   }
 
   // Scalar Core Load Store Unit bus.
-  val lsuAddrBits = 32  // do not change
+  val lsuAddrBits = programCounterBits  // do not change
   var lsuDataBits = 256
   def lsuDataBytes: Int = { lsuDataBits / 8 }
   val lsuDelayPipelineLen = 1
@@ -135,6 +138,7 @@ class Parameters(var m: Seq[MemoryRegion] = Seq(), val hartId: Int = 0) {
 
   // [Internal] L1DCache interface.
   val l1dslots = 256  // (x2 banks)
+  val l1dassoc = 4
   val axi1IdBits = 4  // (x2 banks, 3 bits unused)
   val axi1AddrBits = 32
   def axi1DataBits: Int = { lsuDataBits }

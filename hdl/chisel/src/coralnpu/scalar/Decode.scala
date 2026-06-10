@@ -124,9 +124,9 @@ class DecodedInstruction(p: Parameters) extends Bundle {
   val flushat = Bool()
   val flushall = Bool()
 
-  val rvv = Option.when(p.enableRvv)(Valid(new RvvCompressedInstruction()))
+  val rvv = Option.when(p.enableRvv)(Valid(new RvvCompressedInstruction(p)))
 
-  val float = Option.when(p.enableFloat)(Valid(new FloatInstruction()))
+  val float = Option.when(p.enableFloat)(Valid(new FloatInstruction(p)))
 
   def isAluImm(): Bool = {
       addi || slti || sltiu || xori || ori || andi || slli || srli || srai || rori
@@ -237,8 +237,8 @@ class Dispatch(p: Parameters) extends Module {
     val undefFault = Output(Vec(p.instructionLanes, Bool()))
     val rvvFault = Option.when(p.enableRvv)(
         Output(Vec(p.instructionLanes, Bool())))
-    val bruTarget = Output(Vec(p.instructionLanes, UInt(32.W)))
-    val jalrTarget = Input(Vec(p.instructionLanes, new RegfileBranchTargetIO))
+    val bruTarget = Output(Vec(p.instructionLanes, UInt(p.programCounterBits.W)))
+    val jalrTarget = Input(Vec(p.instructionLanes, new RegfileBranchTargetIO(p)))
 
     val interlock = Input(Bool())
 
@@ -246,49 +246,49 @@ class Dispatch(p: Parameters) extends Module {
     val inst = Vec(p.instructionLanes, Flipped(Decoupled(new FetchInstruction(p))))
 
     // Register file decode cycle interface.
-    val rs1Read = Vec(p.instructionLanes, Flipped(new RegfileReadAddrIO))
-    val rs1Set  = Vec(p.instructionLanes, Flipped(new RegfileReadSetIO))
-    val rs2Read = Vec(p.instructionLanes, Flipped(new RegfileReadAddrIO))
-    val rs2Set  = Vec(p.instructionLanes, Flipped(new RegfileReadSetIO))
-    val rdMark  = Vec(p.instructionLanes, Flipped(new RegfileWriteAddrIO))
-    val busRead = Vec(p.instructionLanes, Flipped(new RegfileBusAddrIO))
-    val rdMark_flt = Option.when(p.enableFloat)(Flipped(new RegfileWriteAddrIO))
-    val rvvRdMark = Option.when(p.enableRvv)(Vec(p.instructionLanes, Flipped(new RegfileWriteAddrIO)))
-    val frs1Read = Option.when(p.enableFloat)(Vec(p.instructionLanes, Flipped(new RegfileReadAddrIO)))
+    val rs1Read = Vec(p.instructionLanes, Flipped(new RegfileReadAddrIO(p)))
+    val rs1Set  = Vec(p.instructionLanes, Flipped(new RegfileReadSetIO(p)))
+    val rs2Read = Vec(p.instructionLanes, Flipped(new RegfileReadAddrIO(p)))
+    val rs2Set  = Vec(p.instructionLanes, Flipped(new RegfileReadSetIO(p)))
+    val rdMark  = Vec(p.instructionLanes, Flipped(new RegfileWriteAddrIO(p)))
+    val busRead = Vec(p.instructionLanes, Flipped(new RegfileBusAddrIO(p)))
+    val rdMark_flt = Option.when(p.enableFloat)(Flipped(new RegfileWriteAddrIO(p)))
+    val rvvRdMark = Option.when(p.enableRvv)(Vec(p.instructionLanes, Flipped(new RegfileWriteAddrIO(p))))
+    val frs1Read = Option.when(p.enableFloat)(Vec(p.instructionLanes, Flipped(new RegfileReadAddrIO(p))))
 
     // ALU interface.
-    val alu = Vec(p.instructionLanes, Valid(new AluCmd))
+    val alu = Vec(p.instructionLanes, Valid(new AluCmd(p)))
 
     // Branch interface.
     val bru = Vec(p.instructionLanes, Valid(new BruCmd(p)))
 
     // CSR interface.
-    val csr = Valid(new CsrCmd)
+    val csr = Valid(new CsrCmd(p))
 
     // LSU interface.
     val lsu = Vec(p.instructionLanes, Decoupled(new LsuCmd(p)))
     val lsuQueueCapacity = Input(UInt(3.W))
 
     // Multiplier interface.
-    val mlu = Vec(p.instructionLanes, Decoupled(new MluCmd))
+    val mlu = Vec(p.instructionLanes, Decoupled(new MluCmd(p)))
 
     // Divide interface.
-    val dvu = Vec(p.instructionLanes, Decoupled(new DvuCmd))
+    val dvu = Vec(p.instructionLanes, Decoupled(new DvuCmd(p)))
 
     // Rvv interface.
     val rvv = Option.when(p.enableRvv)(
-        Vec(p.instructionLanes, Decoupled(new RvvCompressedInstruction)))
+        Vec(p.instructionLanes, Decoupled(new RvvCompressedInstruction(p))))
     val rvvState = Option.when(p.enableRvv)(Input(Valid(new RvvConfigState(p))))
     val rvvIdle = Option.when(p.enableRvv)(Input(Bool()))
     val rvvQueueCapacity = Option.when(p.enableRvv)(Input(UInt(4.W)))
 
     // Float interface
-    val float = Option.when(p.enableFloat)(Decoupled(new FloatInstruction))
+    val float = Option.when(p.enableFloat)(Decoupled(new FloatInstruction(p)))
     val csrFrm = Option.when(p.enableFloat)(Input(UInt(3.W)))
 
     val fbusPortAddr = Option.when(p.enableFloat)(Output(UInt(5.W)))
 
-    val retirement_buffer_nSpace = Input(UInt(5.W))
+    val retirement_buffer_nSpace = Input(UInt(log2Ceil(p.retirementBufferSize + 1).W))
     val retirement_buffer_empty = Input(Bool())
     val retirement_buffer_trap_pending = Input(Bool())
     val single_step = Input(Bool())
@@ -336,8 +336,8 @@ class DispatchV2(p: Parameters) extends Dispatch(p) {
   )
 
   val rdScoreboard = (0 until p.instructionLanes).map(i =>
-      Mux(writesRd(i), UIntToOH(rdAddr(i), 32), 0.U(32.W)))
-  val scoreboardScan = rdScoreboard.scan(0.U(32.W))(_ | _)
+      Mux(writesRd(i), UIntToOH(rdAddr(i), p.scalarRegCount), 0.U(p.scalarRegCount.W)))
+  val scoreboardScan = rdScoreboard.scan(0.U(p.scalarRegCount.W))(_ | _)
   // Note: regd comes from directly from registers, accessible on the same cycle
   // via the busPort of the register file. comb includes write forwarding.
   val regd =  scoreboardScan.map(_ | io.scoreboard.regd)
@@ -370,20 +370,20 @@ class DispatchV2(p: Parameters) extends Dispatch(p) {
       d.rvvWritesFrd()
   )
   val floatReadScoreboard = if (p.enableFloat) { (0 until p.instructionLanes).map(i =>
-    MuxOR(decodedInsts(i).floatReadsFloatRs1() || decodedInsts(i).rvvReadsFloatRs1(), UIntToOH(rs1Addr(i), 32)) |
-    MuxOR(decodedInsts(i).floatReadsRs2(), UIntToOH(rs2Addr(i), 32)) |
-    MuxOR(decodedInsts(i).floatReadsRs3(), UIntToOH(rs3Addr(i), 32))
-  ) } else { (0 until p.instructionLanes).map(_ => 0.U(32.W)) }
+    MuxOR(decodedInsts(i).floatReadsFloatRs1() || decodedInsts(i).rvvReadsFloatRs1(), UIntToOH(rs1Addr(i), p.floatRegCount)) |
+    MuxOR(decodedInsts(i).floatReadsRs2(), UIntToOH(rs2Addr(i), p.floatRegCount)) |
+    MuxOR(decodedInsts(i).floatReadsRs3(), UIntToOH(rs3Addr(i), p.floatRegCount))
+  ) } else { (0 until p.instructionLanes).map(_ => 0.U(p.floatRegCount.W)) }
 
   val floatRdScoreboard = if (p.enableFloat) { (0 until p.instructionLanes).map(i =>
-    MuxOR(writesFloatRd(i), UIntToOH(rdAddr(i), 32))
-  ) } else { (0 until p.instructionLanes).map(_ => 0.U(32.W)) }
-  val floatScoreboardScan = floatRdScoreboard.scan(0.U(32.W))(_ | _)
+    MuxOR(writesFloatRd(i), UIntToOH(rdAddr(i), p.floatRegCount))
+  ) } else { (0 until p.instructionLanes).map(_ => 0.U(p.floatRegCount.W)) }
+  val floatScoreboardScan = floatRdScoreboard.scan(0.U(p.floatRegCount.W))(_ | _)
   val fcomb = floatScoreboardScan.map(_ | io.fscoreboard.getOrElse(0.U))
   val floatReadAfterWrite = (0 until p.instructionLanes).map(i =>
-      (floatReadScoreboard(i) & fcomb(i)) =/= 0.U(32.W))
+      (floatReadScoreboard(i) & fcomb(i)) =/= 0.U(p.floatRegCount.W))
   val floatWriteAfterWrite = (0 until p.instructionLanes).map(i =>
-      (floatRdScoreboard(i) & fcomb(i)) =/= 0.U(32.W))
+      (floatRdScoreboard(i) & fcomb(i)) =/= 0.U(p.floatRegCount.W))
   // For floating point store
   if (p.enableFloat) {
     io.fbusPortAddr.get := rs2Addr(0)
@@ -948,12 +948,12 @@ object DecodeInstruction {
       d.flushall := false.B
 
       if (p.enableFloat) {
-        d.float.get := MakeInvalid(new FloatInstruction)
+        d.float.get := MakeInvalid(new FloatInstruction(p))
       }
     }
 
     if (p.enableRvv) {
-      d.rvv.get := RvvCompressedInstruction.from_uncompressed(op, addr)
+      d.rvv.get := RvvCompressedInstruction.from_uncompressed(p, op, addr)
     }
 
     // Generate the undefined opcode.

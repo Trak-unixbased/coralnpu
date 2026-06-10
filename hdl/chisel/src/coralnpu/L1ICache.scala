@@ -40,7 +40,7 @@ class L1ICache(p: Parameters) extends Module {
   val setLsb = log2Ceil(p.fetchDataBits / 8)
   val setMsb = log2Ceil(sets) + setLsb - 1
   val tagLsb = setMsb + 1
-  val tagMsb = 31
+  val tagMsb = p.axi0AddrBits - 1
 
   val io = IO(new Bundle {
     val ibus = Flipped(new IBusIO(p))
@@ -74,7 +74,7 @@ class L1ICache(p: Parameters) extends Module {
   // ---------------------------------------------------------------------------
   // CAM state.
   val valid = RegInit(VecInit(Seq.fill(slots)(false.B)))
-  val camaddr = Reg(Vec(slots, UInt(32.W)))
+  val camaddr = Reg(Vec(slots, UInt(p.fetchAddrBits.W)))
   val mem = Module(new Sram_1rw_256x256())
 
   val history = Reg(Vec(slots / assoc, Vec(assoc, UInt(log2Ceil(assoc).W))))
@@ -196,7 +196,7 @@ class L1ICache(p: Parameters) extends Module {
   // axi interface.
   val axivalid = RegInit(false.B)  // io.axi.read.addr.valid
   val axiready = RegInit(false.B)  // io.axi.read.data.ready
-  val axiaddr = Reg(UInt(32.W))
+  val axiaddr = Reg(UInt(p.axi0AddrBits.W))
 
   val replaceIdReg = Reg(UInt(slotBits.W))
 
@@ -227,7 +227,7 @@ class L1ICache(p: Parameters) extends Module {
   }
 
   when (io.ibus.valid && !io.ibus.ready && !axivalid && !axiready) {
-    val alignedAddr = Cat(io.ibus.addr(31, setLsb), 0.U(setLsb.W))
+    val alignedAddr = Cat(io.ibus.addr(p.fetchAddrBits - 1, setLsb), 0.U(setLsb.W))
     axiaddr := alignedAddr
     camaddr(replaceId) := alignedAddr
   } .elsewhen (io.axi.read.addr.valid && io.axi.read.addr.ready) {
@@ -245,7 +245,7 @@ class L1ICache(p: Parameters) extends Module {
 
   // IBus transaction must latch until completion.
   val addrLatchActive = RegInit(false.B)
-  val addrLatchData = Reg(UInt(32.W))
+  val addrLatchData = Reg(UInt(p.fetchAddrBits.W))
 
   when (io.flush.valid) {
     addrLatchActive := false.B

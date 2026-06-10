@@ -46,8 +46,8 @@ class BruCmd(p: Parameters) extends Bundle {
   val op = BruOp()
   val pc = UInt(p.programCounterBits.W)
   val target = UInt(p.programCounterBits.W)
-  val link = UInt(5.W)
-  val inst = UInt(32.W)
+  val link = UInt(log2Ceil(p.scalarRegCount).W)
+  val inst = UInt(p.instructionBits.W)
 }
 
 class BranchState(p: Parameters) extends Bundle {
@@ -56,10 +56,10 @@ class BranchState(p: Parameters) extends Bundle {
   val target = UInt(p.programCounterBits.W)
   val originalTarget = UInt(p.programCounterBits.W)
   val linkValid = Bool()
-  val linkAddr = UInt(5.W)
+  val linkAddr = UInt(log2Ceil(p.scalarRegCount).W)
   val linkData = UInt(p.programCounterBits.W)
-  val pcEx = UInt(32.W)
-  val inst = UInt(32.W)
+  val pcEx = UInt(p.programCounterBits.W)
+  val inst = UInt(p.instructionBits.W)
 }
 
 object BranchState {
@@ -91,17 +91,17 @@ class Bru(p: Parameters, first: Boolean) extends Module {
 
     // Execute cycle.
     val csr = Option.when(first)(new CsrBruIO(p))
-    val rs1 = Input(new RegfileReadDataIO)
-    val rs2 = Input(new RegfileReadDataIO)
-    val rd  = Valid(Flipped(new RegfileWriteDataIO))
+    val rs1 = Input(new RegfileReadDataIO(p))
+    val rs2 = Input(new RegfileReadDataIO(p))
+    val rd  = Valid(Flipped(new RegfileWriteDataIO(p)))
     val taken = new BranchTakenIO(p)
     val actually_taken = Output(Bool())
     val real_target = Output(UInt(p.programCounterBits.W))
     val pc = Output(UInt(p.programCounterBits.W))
-    val target = Flipped(new RegfileBranchTargetIO)
+    val target = Flipped(new RegfileBranchTargetIO(p))
     val interlock = Option.when(first)(Output(Bool()))
 
-    val fault_manager = Option.when(first)(Input(Valid(Flipped(new FaultManagerOutput))))
+    val fault_manager = Option.when(first)(Input(Valid(Flipped(new FaultManagerOutput(p)))))
   })
 
   // Assign state
@@ -109,7 +109,7 @@ class Bru(p: Parameters, first: Boolean) extends Module {
   val fault_manager_valid = io.fault_manager.map(_.valid).getOrElse(false.B)
 
   val pcDe  = io.req.bits.pc
-  val pc4De = io.req.bits.pc + 4.U
+  val pc4De = io.req.bits.pc + (p.instructionBits / 8).U
 
   val stateReg = RegInit(MakeValid(false.B, BranchState.default(p)))
   val nextState = Wire(new BranchState(p))
@@ -125,7 +125,7 @@ class Bru(p: Parameters, first: Boolean) extends Module {
   nextState.inst := io.req.bits.inst
   nextState.originalTarget := io.req.bits.target
 
-  val mtvec = if (first) { Cat(io.csr.get.out.mtvec(31,2), 0.U(2.W)) } else { 0.U(32.W )}
+  val mtvec = if (first) { Cat(io.csr.get.out.mtvec(p.programCounterBits-1,2), 0.U(2.W)) } else { 0.U(p.programCounterBits.W )}
   val pipeline0Target = if (first) {
     val mret = (io.req.bits.op === BruOp.MRET)
     val ecall = io.req.bits.op === BruOp.ECALL
@@ -140,7 +140,7 @@ class Bru(p: Parameters, first: Boolean) extends Module {
       fault_manager_valid -> mtvec,
       // Normal operation
       io.req.bits.fwd -> pc4De,
-      ((io.req.bits.op === BruOp.JALR)) -> (io.target.data & "xFFFFFFFE".U),
+      ((io.req.bits.op === BruOp.JALR)) -> (io.target.data & ~1.U(p.programCounterBits.W)),
   ))
   val stateRegValid = io.req.valid || fault_manager_valid
   stateReg.valid := stateRegValid
@@ -213,7 +213,7 @@ class Bru(p: Parameters, first: Boolean) extends Module {
   io.actually_taken := stateReg.valid && isTaken
   io.real_target := Mux(stateReg.bits.fwd,
                         Mux(stateReg.bits.op === BruOp.JALR,
-                            io.target.data & "xFFFFFFFE".U,
+                            io.target.data & ~1.U(p.programCounterBits.W),
                             stateReg.bits.originalTarget),
                         stateReg.bits.target)
   io.pc := stateReg.bits.pcEx

@@ -35,36 +35,36 @@ object MluOp extends ChiselEnum {
   val Entries = Value
 }
 
-class MluCmd extends Bundle {
-  val addr = UInt(5.W)
+class MluCmd(p: Parameters) extends Bundle {
+  val addr = UInt(log2Ceil(p.scalarRegCount).W)
   val op = MluOp()
 }
 
 class MluStage1(p: Parameters) extends Bundle {
-  val rd = UInt(5.W)
+  val rd = UInt(log2Ceil(p.scalarRegCount).W)
   val op = MluOp()
   val sel = UInt(p.instructionLanes.W)
 }
 
 class MluStage2(p: Parameters) extends Bundle {
-  val rd = UInt(5.W)
+  val rd = UInt(log2Ceil(p.scalarRegCount).W)
   val op = MluOp()
-  val prod = SInt(66.W)
+  val prod = SInt((2 * p.xlen + 2).W)
 }
 
 class Mlu(p: Parameters) extends Module {
   val io = IO(new Bundle {
     // Decode cycle.
-    val req = Vec(p.instructionLanes, Flipped(Decoupled(new MluCmd)))
+    val req = Vec(p.instructionLanes, Flipped(Decoupled(new MluCmd(p))))
 
     // Execute cycle.
-    val rs1 = Vec(p.instructionLanes, Flipped(new RegfileReadDataIO))
-    val rs2 = Vec(p.instructionLanes, Flipped(new RegfileReadDataIO))
-    val rd  = Decoupled(Flipped(new RegfileWriteDataIO))
+    val rs1 = Vec(p.instructionLanes, Flipped(new RegfileReadDataIO(p)))
+    val rs2 = Vec(p.instructionLanes, Flipped(new RegfileReadDataIO(p)))
+    val rd  = Decoupled(Flipped(new RegfileWriteDataIO(p)))
   })
 
   // Stage 1 select and decode instruction
-  val arb = Module(new Arbiter(new MluCmd, p.instructionLanes))
+  val arb = Module(new Arbiter(new MluCmd(p), p.instructionLanes))
   arb.io.in <> io.req
 
   val stage1 = Wire(Decoupled(new MluStage1(p)))
@@ -86,10 +86,10 @@ class Mlu(p: Parameters) extends Module {
 
   val rs2signed = op2in.isOneOf(MluOp.MULH)
   val rs1signed = op2in.isOneOf(MluOp.MULHSU) || rs2signed
-  val rs1s = Cat(rs1signed && rs1(31), rs1).asSInt
-  val rs2s = Cat(rs2signed && rs2(31), rs2).asSInt
+  val rs1s = Cat(rs1signed && rs1(p.xlen - 1), rs1).asSInt
+  val rs2s = Cat(rs2signed && rs2(p.xlen - 1), rs2).asSInt
   val prod = rs1s * rs2s
-  assert(prod.getWidth == 66)
+  assert(prod.getWidth == (2 * p.xlen + 2))
 
   val stage2 = Wire(Decoupled(new MluStage2(p)))
   stage2.valid := valid2in
@@ -105,8 +105,8 @@ class Mlu(p: Parameters) extends Module {
   // To be guarded by stage3Input.valid
   val mul = Mux(
       op3in === MluOp.MUL,
-      prod3in(31, 0),  // MUL
-      prod3in(63,32)   // MULH, MULHSU, MULHU
+      prod3in(p.xlen - 1, 0),  // MUL
+      prod3in(2 * p.xlen - 1, p.xlen)   // MULH, MULHSU, MULHU
   )
 
   // Stage 3 output result

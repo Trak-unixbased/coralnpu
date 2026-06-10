@@ -231,7 +231,7 @@ class FloatCoreWrapper(p: Parameters) extends BlackBox with HasBlackBoxInline
 class FloatCore(p: Parameters) extends Module {
     val io = IO(new FloatCoreIO(p))
 
-    val instQueue = Module(new Queue(new FloatInstruction, 1))
+    val instQueue = Module(new Queue(new FloatInstruction(p), 1))
     instQueue.io.enq <> MakeDecoupled(io.inst.valid, instQueue.io.count === 0.U, io.inst.bits)
     val inst = instQueue.io.deq
     io.inst.ready := (instQueue.io.count === 0.U)
@@ -350,7 +350,7 @@ class FloatCore(p: Parameters) extends Module {
 
     io.write_ports(0).valid := ((floatCoreWrapper.io.out_valid_o && inst.fire && !inst.bits.scalar_rd) || fmv_w_x) && !storefp
     io.write_ports(0).addr := inst.bits.rd
-    io.write_ports(0).data := Fp32.fromWord(Mux(fmv_w_x, io.rs1.data, floatCoreWrapper.io.result_o))
+    io.write_ports(0).data := Fp32.fromWord(Mux(fmv_w_x, io.rs1.data(31, 0), floatCoreWrapper.io.result_o))
 
     io.write_ports(1).valid := io.lsu_rd.valid
     io.write_ports(1).addr := io.lsu_rd.bits.addr
@@ -359,7 +359,7 @@ class FloatCore(p: Parameters) extends Module {
     io.csr.in.fflags.valid := (floatCoreWrapper.io.out_valid_o && inst.fire && !fmv)
     io.csr.in.fflags.bits := floatCoreWrapper.io.status_o.asUInt
 
-    val scalar_rd_pre_pipe = Wire(Decoupled(new RegfileWriteDataIO))
+    val scalar_rd_pre_pipe = Wire(Decoupled(new RegfileWriteDataIO(p)))
     scalar_rd_pre_pipe.valid := (((floatCoreWrapper.io.in_valid_i && floatCoreWrapper.io.in_ready_o) || fpuActive) && floatCoreWrapper.io.out_valid_o && floatCoreWrapper.io.out_ready_i && inst.bits.scalar_rd) || (fmv_x_w)
     scalar_rd_pre_pipe.bits.addr := inst.bits.rd
     scalar_rd_pre_pipe.bits.data := Mux(fmv_x_w, io.read_ports(0).data.asWord, floatCoreWrapper.io.result_o)

@@ -21,7 +21,7 @@ import coralnpu.rvv._
 
 class DFlushFenceiIO(p: Parameters) extends DFlushIO(p) {
   val fencei = Output(Bool())
-  val pcNext = Output(UInt(32.W))
+  val pcNext = Output(UInt(p.programCounterBits.W))
 }
 
 class Lsu(p: Parameters) extends Module {
@@ -32,8 +32,8 @@ class Lsu(p: Parameters) extends Module {
     val busPort_flt = Option.when(p.enableFloat)(Flipped(new RegfileBusPortIO(p)))
 
     // Execute cycle(s).
-    val rd = Valid(Flipped(new RegfileWriteDataIO))
-    val rd_flt = Valid(Flipped(new RegfileWriteDataIO))
+    val rd = Valid(Flipped(new RegfileWriteDataIO(p)))
+    val rd_flt = Valid(Flipped(new FloatRegfileWriteDataIO(p)))
 
     // Cached interface.
     val ibus = new IBusIO(p)
@@ -58,7 +58,7 @@ class Lsu(p: Parameters) extends Module {
 
     val queueCapacity = Output(UInt(3.W))
     val active = Output(Bool())
-    val storeComplete = Output(Valid(UInt(32.W)))
+    val storeComplete = Output(Valid(UInt(p.programCounterBits.W)))
   })
 }
 
@@ -118,7 +118,7 @@ object LsuOp extends ChiselEnum {
     op.isOneOf(LsuOp.LB, LsuOp.LBU, LsuOp.LH, LsuOp.LHU, LsuOp.LW)
   }
 
-  def opSize(op: LsuOp.Type, address: UInt): (UInt, UInt) = {
+  def opSize(op: LsuOp.Type, address: UInt, p: Parameters): (UInt, UInt) = {
     val halfAligned = (address(0) === 0.U)
     val wordAligned = (address(1, 0) === 0.U)
 
@@ -130,9 +130,9 @@ object LsuOp extends ChiselEnum {
       LsuOp.isVector(op) -> 16.U,
     ))
 
-    val halfAlignedAddress = address(31, 1) << 1.U
-    val wordAlignedAddress = address(31, 2) << 2.U
-    val lineAlignedAddress = address(31, 4) << 4.U
+    val halfAlignedAddress = address(p.lsuAddrBits - 1, 1) << 1.U
+    val wordAlignedAddress = address(p.lsuAddrBits - 1, 2) << 2.U
+    val lineAlignedAddress = address(p.lsuAddrBits - 1, 4) << 4.U
     val alignedAddress = MuxUpTo1H(lineAlignedAddress, Seq(
       op.isOneOf(LsuOp.LB, LsuOp.LBU, LsuOp.SB) -> address,
       (op.isOneOf(LsuOp.LH, LsuOp.LHU, LsuOp.SH) && halfAligned) ->
@@ -147,9 +147,9 @@ object LsuOp extends ChiselEnum {
 
 class LsuCmd(p: Parameters) extends Bundle {
   val store = Bool()
-  val addr = UInt(5.W)
+  val addr = UInt(log2Ceil(p.scalarRegCount).W)
   val op = LsuOp()
-  val pc = UInt(32.W)
+  val pc = UInt(p.programCounterBits.W)
   val elemWidth = Option.when(p.enableRvv) { UInt(3.W) }
   val nfields = Option.when(p.enableRvv) { UInt(3.W) }
   val umop = Option.when(p.enableRvv) { UInt(5.W) }
@@ -180,11 +180,11 @@ class LsuCmd(p: Parameters) extends Bundle {
 
 class LsuUOp(p: Parameters) extends Bundle {
   val store = Bool()
-  val rd = UInt(5.W)
+  val rd = UInt(log2Ceil(p.scalarRegCount).W)
   val op = LsuOp()
-  val pc = UInt(32.W)
-  val addr = UInt(32.W)
-  val data = UInt(32.W)  // Doubles as rs2
+  val pc = UInt(p.programCounterBits.W)
+  val addr = UInt(p.lsuAddrBits.W)
+  val data = UInt(p.xlen.W)  // Doubles as rs2
   // This aligns with "width" in the spec. It controls index width in
   // indexed loads/stores and data width otherwise.
   val elemWidth = Option.when(p.enableRvv) { UInt(3.W) }
@@ -279,15 +279,16 @@ object ComputeStridedAddrs {
             baseAddr: UInt,
             stride: UInt,
             elemWidth: UInt): Vec[UInt] = {
-    MuxUpTo1H(VecInit.fill(bytesPerSlot)(0.U(32.W)), Seq(
+    val addrWidth = baseAddr.getWidth
+    MuxUpTo1H(VecInit.fill(bytesPerSlot)(0.U(addrWidth.W)), Seq(
       // elemWidth validation is done at decode time.
       // TODO: pass this as an enum.
       (elemWidth === "b000".U) -> VecInit((0 until bytesPerSlot).map(
-          i => (baseAddr + (i.U*stride))(31, 0))),  // 1-byte elements
+          i => (baseAddr + (i.U*stride))(addrWidth - 1, 0))),  // 1-byte elements
       (elemWidth === "b101".U) -> VecInit((0 until bytesPerSlot).map(
-          i => (baseAddr + ((i >> 1).U*stride))(31, 0) + (i & 1).U)),  // 2-byte elements
+          i => (baseAddr + ((i >> 1).U*stride))(addrWidth - 1, 0) + (i & 1).U)),  // 2-byte elements
       (elemWidth === "b110".U) -> VecInit((0 until bytesPerSlot).map(
-          i => (baseAddr + ((i >> 2).U*stride))(31, 0) + (i & 3).U)),  // 4-byte elements
+          i => (baseAddr + ((i >> 2).U*stride))(addrWidth - 1, 0) + (i & 3).U)),  // 4-byte elements
     ))
   }
 }
@@ -298,11 +299,12 @@ object ComputeIndexedAddrs {
             indices: UInt,
             indexWidth: UInt,
             sew: UInt): Vec[UInt] = {
-    val indices8 = UIntToVec(indices, 8).map(x => Cat(0.U(24.W), x))
-    val indices16 = UIntToVec(indices, 16).map(x => Cat(0.U(16.W), x))
-    val indices32 = UIntToVec(indices, 32)
+    val addrWidth = baseAddr.getWidth
+    val indices8 = UIntToVec(indices, 8).map(x => Cat(0.U((addrWidth - 8).W), x))
+    val indices16 = UIntToVec(indices, 16).map(x => Cat(0.U((addrWidth - 16).W), x))
+    val indices32 = UIntToVec(indices, 32).map(x => if (addrWidth > 32) Cat(0.U((addrWidth - 32).W), x) else x)
 
-    val indices_v = MuxUpTo1H(VecInit.fill(bytesPerSlot)(0.U(32.W)), Seq(
+    val indices_v = MuxUpTo1H(VecInit.fill(bytesPerSlot)(0.U(addrWidth.W)), Seq(
       // 8-bit indices.
       (indexWidth === "b000".U) -> VecInit(indices8),
       // 16-bit indices.
@@ -312,7 +314,7 @@ object ComputeIndexedAddrs {
           indices32 ++ indices32 ++ indices32 ++ indices32),
     ))
 
-    MuxUpTo1H(VecInit.fill(bytesPerSlot)(0.U(32.W)), Seq(
+    MuxUpTo1H(VecInit.fill(bytesPerSlot)(0.U(addrWidth.W)), Seq(
       // elemWidth validation is done at decode time.
       // 8-bit data. Each byte has its own offset.
       (sew === "b000".U) -> VecInit((0 until bytesPerSlot).map(
@@ -371,16 +373,16 @@ class LsuSlot(p: Parameters, bytesPerSlot: Int) extends Bundle {
   val elemBits = log2Ceil(p.lsuDataBytes)
 
   val op = LsuOp()
-  val rd = UInt(5.W)
+  val rd = UInt(log2Ceil(p.scalarRegCount).W)
   val store = Bool()
-  val pc = UInt(32.W)
-  val baseAddr = UInt(32.W)
+  val pc = UInt(p.programCounterBits.W)
+  val baseAddr = UInt(p.lsuAddrBits.W)
   val active = Vec(bytesPerSlot, Bool())
-  val addrs = Vec(bytesPerSlot, UInt(32.W))
+  val addrs = Vec(bytesPerSlot, UInt(p.lsuAddrBits.W))
   val data = Vec(bytesPerSlot, UInt(8.W))
   val pendingWriteback = Bool()
-  val elemStride = UInt(32.W)     // Stride between lanes in a vector
-  val segmentStride = UInt(32.W)  // Stride between base addr between segments
+  val elemStride = UInt(p.xlen.W)     // Stride between lanes in a vector
+  val segmentStride = UInt(p.xlen.W)  // Stride between base addr between segments
   // This aligns with "width" in the spec. It controls index width in
   // indexed loads/stores and data width otherwise.
   val elemWidth = UInt(3.W)
@@ -408,7 +410,7 @@ class LsuSlot(p: Parameters, bytesPerSlot: Int) extends Bundle {
   }
 
   def lineAddresses(): Vec[UInt] = {
-    VecInit(addrs.map(x => x(31, elemBits)))
+    VecInit(addrs.map(x => x(p.lsuAddrBits - 1, elemBits)))
   }
 
   def elemAddresses(): Vec[UInt] = {
@@ -423,7 +425,7 @@ class LsuSlot(p: Parameters, bytesPerSlot: Int) extends Bundle {
         !pendingVector() &&
         active(i) && (!lastRead.valid || (lastRead.bits =/= lineAddrs(i))))
 
-    MuxCase(MakeInvalid(UInt(32.W)), (0 until bytesPerSlot).map(
+    MuxCase(MakeInvalid(UInt(p.lsuAddrBits.W)), (0 until bytesPerSlot).map(
         i => lineActive(i) -> MakeValid(!pendingVector(), addrs(i))))
   }
 
@@ -442,7 +444,7 @@ class LsuSlot(p: Parameters, bytesPerSlot: Int) extends Bundle {
     result.elemWidth := elemWidth
     result.sew := sew
 
-    val segmentBaseAddr = baseAddr + (segmentStride * vectorLoop.segment.curr)(31, 0)
+    val segmentBaseAddr = baseAddr + (segmentStride * vectorLoop.segment.curr)(p.lsuAddrBits - 1, 0)
     val bitsPerSlot = bytesPerSlot * 8
     val indices = MuxUpTo1H(rvv2lsu.idx.bits.data, Seq(
         // 2 of 2
@@ -934,7 +936,7 @@ class LsuV2(p: Parameters) extends Lsu(p) {
 
   val (wdata, wmask, wactive) = slot.scatter(targetLine.bits)
 
-  val (opSize, alignedAddress) = LsuOp.opSize(slot.op, targetAddress.bits)
+  val (opSize, alignedAddress) = LsuOp.opSize(slot.op, targetAddress.bits, p)
 
   // ibus data path
   io.ibus.valid := loadUpdatedSlot.activeTransaction() && itcm && !slot.store && !faultReg.valid
@@ -1016,7 +1018,7 @@ class LsuV2(p: Parameters) extends Lsu(p) {
       lsu2RvvFire && io.lsu2rvv.get(0).bits.last
   } else { false.B }
   val storeComplete = scalarStoreComplete || vectorStoreComplete
-  io.storeComplete := Mux(storeComplete && !io.ebus.fault.valid, MakeValid(slot.pc), MakeInvalid(UInt(32.W)))
+  io.storeComplete := Mux(storeComplete && !io.ebus.fault.valid, MakeValid(slot.pc), MakeInvalid(UInt(p.programCounterBits.W)))
 
 
   // ==========================================================================

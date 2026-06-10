@@ -17,7 +17,7 @@ package coralnpu.float
 import common.{MakeWireBundle, MakeValid, MakeInvalid}
 import chisel3._
 import chisel3.util._
-import coralnpu.{FRegfileRead, FRegfileWrite, RegfileReadDataIO, RegfileWriteDataIO, Parameters}
+import coralnpu.{FRegfileRead, FRegfileWrite, RegfileReadDataIO, RegfileWriteDataIO, FloatRegfileWriteDataIO, Parameters}
 
 class CsrFloatIO(p: Parameters) extends Bundle {
   val in = new Bundle {
@@ -44,7 +44,7 @@ object FloatOpcode extends ChiselEnum {
     val NMSUB = Value
 }
 
-class FloatInstruction extends Bundle {
+class FloatInstruction(p: Parameters) extends Bundle {
     val opcode = FloatOpcode()
     val funct5 = UInt(5.W)
     val src_fmt = FpFormat()
@@ -53,8 +53,8 @@ class FloatInstruction extends Bundle {
     val rs2 = UInt(5.W)
     val rs1 = UInt(5.W)
     val rm = UInt(3.W)
-    val inst = UInt(32.W)
-    val pc = UInt(32.W)
+    val inst = UInt(p.instructionBits.W)
+    val pc = UInt(p.programCounterBits.W)
     val scalar_rd = Bool()
     val scalar_rs1 = Bool()
     val float_rs1 = Bool()
@@ -154,7 +154,7 @@ object FloatInstruction {
     val dst_fmt = Mux(fcvt_bf16_s, FpFormat.FP16ALT, Mux(fcvt_s_bf16, FpFormat.FP32, FpFormat.FP32))
 
     MakeWireBundle[ValidIO[FloatInstruction]](
-      Valid(new FloatInstruction),
+      Valid(new FloatInstruction(p)),
       // Non-load/store must have fmt == 0 (FP32) or fmt == 2 (BF16, if Zfbfmin is enabled)
       _.valid -> (opcode.valid && (opcode.bits === FloatOpcode.LOADFP || opcode.bits === FloatOpcode.STOREFP || (fmt === 0.U(2.W)) || is_zfbfmin)),
       _.bits.opcode -> opcode.bits,
@@ -179,14 +179,14 @@ object FloatInstruction {
 
 class FloatCoreIO(p: Parameters) extends Bundle {
   // Decode
-  val inst = Flipped(Decoupled(new FloatInstruction))
-  val read_ports = Flipped(Vec(3, new FRegfileRead))
-  val write_ports = Flipped(Vec(2, new FRegfileWrite))
+  val inst = Flipped(Decoupled(new FloatInstruction(p)))
+  val read_ports = Flipped(Vec(3, new FRegfileRead(p)))
+  val write_ports = Flipped(Vec(2, new FRegfileWrite(p)))
 
   // Execute
-  val rs1 = Flipped(new RegfileReadDataIO)
-  val rs2 = Flipped(new RegfileReadDataIO)
-  val scalar_rd = Decoupled(new RegfileWriteDataIO)
+  val rs1 = Flipped(new RegfileReadDataIO(p))
+  val rs2 = Flipped(new RegfileReadDataIO(p))
+  val scalar_rd = Decoupled(new RegfileWriteDataIO(p))
   val csr = new CsrFloatIO(p)
-  val lsu_rd = Flipped(Valid(new RegfileWriteDataIO))
+  val lsu_rd = Flipped(Valid(new FloatRegfileWriteDataIO(p)))
 }

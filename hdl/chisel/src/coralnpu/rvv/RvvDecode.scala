@@ -17,6 +17,7 @@ package coralnpu.rvv
 import chisel3._
 import chisel3.util._
 import common.{ForceZero, MakeInvalid, MakeValid, MakeWireBundle, MuxUpTo1H}
+import coralnpu.Parameters
 
 
 object RvvCompressedOpcode extends ChiselEnum {
@@ -32,8 +33,8 @@ object RvvAddressingMode extends ChiselEnum {
   val INDEXED_ORDERED = Value(3.U(2.W))
 }
 
-class RvvCompressedInstruction extends Bundle {
-  val pc = UInt(32.W)
+class RvvCompressedInstruction(p: Parameters) extends Bundle {
+  val pc = UInt(p.programCounterBits.W)
   val opcode = RvvCompressedOpcode()
   val bits = UInt(25.W)
 
@@ -146,7 +147,7 @@ class RvvCompressedInstruction extends Bundle {
 }
 
 object RvvCompressedInstruction {
-  def from_uncompressed(inst: UInt, pc: UInt): Valid[RvvCompressedInstruction] = {
+  def from_uncompressed(p: Parameters, inst: UInt, pc: UInt): Valid[RvvCompressedInstruction] = {
     val old_opcode = inst(6, 0)
     val bits = inst(31, 7)
 
@@ -170,7 +171,7 @@ object RvvCompressedInstruction {
 
     // Fancy way to MakeValid.
     MakeWireBundle[ValidIO[RvvCompressedInstruction]](
-      Valid(new RvvCompressedInstruction),
+      Valid(new RvvCompressedInstruction(p)),
       _.valid -> new_opcode.valid,
       _.bits.opcode -> new_opcode.bits,
       _.bits.pc -> pc,

@@ -33,7 +33,7 @@ class CoreTlul(p: Parameters, coreModuleName: String) extends RawModule {
         val fault = Output(Bool())
         val wfi = Output(Bool())
         val irq = Input(Bool())
-        val boot_addr = Input(UInt(32.W))
+        val boot_addr = Input(UInt(p.fetchAddrBits.W))
         val timer_irq = Input(Bool())
         val software_irq = Input(Bool())
         val te = Input(Bool())

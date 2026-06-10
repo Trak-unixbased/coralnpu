@@ -55,17 +55,17 @@ class L1DCache(p: Parameters) extends Module {
 
   // Remove bank select bit from address.
   def BankInAddress(addr: UInt): UInt = {
-    assert(addr.getWidth == 32)
-    val output = Cat(addr(31, linebit + 1), addr(linebit - 1, 0))
-    assert(output.getWidth == 31)
+    assert(addr.getWidth == p.lsuAddrBits)
+    val output = Cat(addr(p.lsuAddrBits - 1, linebit + 1), addr(linebit - 1, 0))
+    assert(output.getWidth == (p.lsuAddrBits - 1))
     output
   }
 
   // Add bank select bit to address.
   def BankOutAddress(addr: UInt, bank: Int): UInt = {
-    assert(addr.getWidth == 31)
-    val output = Cat(addr(30, linebit), bank.U(1.W), addr(linebit - 1, 0))
-    assert(output.getWidth == 32)
+    assert(addr.getWidth == (p.axi1AddrBits - 1))
+    val output = Cat(addr(p.axi1AddrBits - 2, linebit), bank.U(1.W), addr(linebit - 1, 0))
+    assert(output.getWidth == p.axi1AddrBits)
     output
   }
 
@@ -146,7 +146,7 @@ class L1DCache(p: Parameters) extends Module {
 
   // dbus transaction must latch until completion.
   val addrLatchActive = RegInit(false.B)
-  val addrLatchData = Reg(UInt(32.W))
+  val addrLatchData = Reg(UInt(p.lsuAddrBits.W))
 
   when (io.dbus.valid && !io.dbus.ready && !addrLatchActive) {
     addrLatchActive := true.B
@@ -271,12 +271,12 @@ class L1DCacheBank(p: Parameters) extends Module {
   // 2^8 * 256  / 8 = 8KiB    4-way  Tag[31,12] + Index[11,6] + Data[5,0]
   val slots = p.l1dslots
   val slotBits = log2Ceil(slots)
-  val assoc = 4
+  val assoc = p.l1dassoc
   val sets = slots / assoc
   val setLsb = log2Ceil(p.lsuDataBits / 8)
   val setMsb = log2Ceil(sets) + setLsb - 1
   val tagLsb = setMsb + 1
-  val tagMsb = 30
+  val tagMsb = p.axi1AddrBits - 2
 
   val io = IO(new Bundle {
     val dbus = Flipped(new DBusIO(p, true))
@@ -351,7 +351,7 @@ class L1DCacheBank(p: Parameters) extends Module {
   // CAM state.
   val valid = RegInit(VecInit(Seq.fill(slots)(false.B)))
   val dirty = RegInit(VecInit(Seq.fill(slots)(false.B)))
-  val camaddr = Reg(Vec(slots, UInt(32.W)))
+  val camaddr = Reg(Vec(slots, UInt((p.lsuAddrBits - 1).W)))
   val mem = Module(new Sram_1rwm_256x288())
 
   val history = Reg(Vec(slots / assoc, Vec(assoc, UInt(log2Ceil(assoc).W))))
@@ -490,8 +490,8 @@ class L1DCacheBank(p: Parameters) extends Module {
   val axiwdatabuf = Reg(UInt(p.axi1DataBits.W))
   val axiwstrbbuf = Reg(UInt((p.axi1DataBits / 8).W))
 
-  val axiraddr = Reg(UInt(32.W))
-  val axiwaddr = Reg(UInt(32.W))
+  val axiraddr = Reg(UInt((p.axi1AddrBits - 1).W))
+  val axiwaddr = Reg(UInt((p.axi1AddrBits - 1).W))
 
   val replaceIdReg = Reg(UInt(slotBits.W))
 

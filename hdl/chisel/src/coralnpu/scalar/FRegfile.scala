@@ -20,24 +20,24 @@ import common.Fp32
 
 class FRegfile(p: Parameters, n_read: Int, n_write: Int) extends Module {
   val io = IO(new Bundle {
-    val read_ports = Vec(n_read, new FRegfileRead)
-    val write_ports = Vec(n_write, new FRegfileWrite)
+    val read_ports = Vec(n_read, new FRegfileRead(p))
+    val write_ports = Vec(n_write, new FRegfileWrite(p))
     val dm_write_valid = Input(Bool())
 
-    val scoreboard_set = Input(UInt(32.W))
-    val scoreboard = Output(UInt(32.W))
+    val scoreboard_set = Input(UInt(p.floatRegCount.W))
+    val scoreboard = Output(UInt(p.floatRegCount.W))
     val exception = Output(Bool())
 
     val busPort = new RegfileBusPortIO(p)
-    val busPortAddr = Input(UInt(5.W))
+    val busPortAddr = Input(UInt(log2Ceil(p.floatRegCount).W))
   })
 
-  val fregfile = RegInit(VecInit.fill(32)(Fp32.fromWord("x00000000".U(32.W))))
-  val scoreboard = RegInit(0.U(32.W))
+  val fregfile = RegInit(VecInit.fill(p.floatRegCount)(Fp32.fromWord("x00000000".U(32.W))))
+  val scoreboard = RegInit(0.U(p.floatRegCount.W))
 
   // Update scoreboard
   val scoreboard_clr = io.write_ports.map(x =>
-      Mux(x.valid, UIntToOH(x.addr), 0.U)).reduce(_|_)
+      Mux(x.valid, UIntToOH(x.addr, p.floatRegCount), 0.U(p.floatRegCount.W))).reduce(_|_)
   scoreboard := (scoreboard & ~scoreboard_clr) | io.scoreboard_set
   io.scoreboard := scoreboard
 
@@ -47,8 +47,8 @@ class FRegfile(p: Parameters, n_read: Int, n_write: Int) extends Module {
   assert(!scoreboard_error)
 
   // Writes
-  val register_write_error = Wire(Vec(32, Bool()))
-  for (i <- 0 until 32) {
+  val register_write_error = Wire(Vec(p.floatRegCount, Bool()))
+  for (i <- 0 until p.floatRegCount) {
     val valid = io.write_ports.map(x => x.valid & x.addr === i.U)
     val data = PriorityMux(valid, io.write_ports.map(_.data))
     register_write_error(i) := PopCount(valid) > 1.U

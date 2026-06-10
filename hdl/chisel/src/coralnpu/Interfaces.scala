@@ -19,11 +19,11 @@ import chisel3._
 import chisel3.util._
 
 class CsrInIO(p: Parameters) extends Bundle {
-  val value = Input(Vec(p.csrInCount, UInt(32.W)))
+  val value = Input(Vec(p.csrInCount, UInt(p.xlen.W)))
 }
 
 class CsrOutIO(p: Parameters) extends Bundle {
-  val value = Output(Vec(p.csrOutCount, UInt(32.W)))
+  val value = Output(Vec(p.csrOutCount, UInt(p.xlen.W)))
 }
 
 class CsrInOutIO(p: Parameters) extends Bundle {
@@ -36,14 +36,14 @@ class BranchTakenIO(p: Parameters) extends Bundle {
   val value = Output(UInt(p.programCounterBits.W))
 }
 
-class RegfileLinkPortIO extends Bundle {
+class RegfileLinkPortIO(p: Parameters) extends Bundle {
   val valid = Output(Bool())
-  val value = Output(UInt(32.W))
+  val value = Output(UInt(p.programCounterBits.W))
 }
 
 class RegfileBusPortIO(p: Parameters) extends Bundle {
-  val addr = Vec(p.instructionLanes, UInt(32.W))
-  val data = Vec(p.instructionLanes, UInt(32.W))
+  val addr = Vec(p.instructionLanes, UInt(p.lsuAddrBits.W))
+  val data = Vec(p.instructionLanes, UInt(p.xlen.W))
 }
 
 // When `valid` as asserted, `addr` must remain constant
@@ -78,10 +78,10 @@ abstract class FetchUnit(p: Parameters) extends Module {
     val ibus = new IBusIO(p)
     val inst = new FetchIO(p)
     val branch = Flipped(Vec(p.instructionLanes, new BranchTakenIO(p)))
-    val linkPort = Flipped(new RegfileLinkPortIO)
+    val linkPort = Flipped(new RegfileLinkPortIO(p))
     val iflush = Flipped(new IFlushIO(p))
     val pc = UInt(p.fetchAddrBits.W)
-    val fault = Output(Valid(UInt(32.W)))
+    val fault = Output(Valid(UInt(p.programCounterBits.W)))
   })
 }
 
@@ -114,7 +114,7 @@ class DBusIO(p: Parameters, bank: Boolean = false) extends Bundle {
   val valid = Output(Bool())
   val ready = Input(Bool())
   val write = Output(Bool())
-  val pc   = Output(UInt(32.W))
+  val pc   = Output(UInt(p.programCounterBits.W))
   val addr = Output(UInt((p.lsuAddrBits - (if (bank) 1 else 0)).W))
   val adrx = Output(UInt((p.lsuAddrBits - (if (bank) 1 else 0)).W))
   val size = Output(UInt(p.dbusSize.W))
@@ -132,7 +132,7 @@ class EBusIO(p: Parameters) extends Bundle {
 
 class IFlushIO(p: Parameters) extends Bundle {
   val valid = Output(Bool())
-  val pcNext = Output(UInt(32.W))
+  val pcNext = Output(UInt(p.programCounterBits.W))
   val ready = Input(Bool())
 }
 
@@ -145,13 +145,13 @@ class DFlushIO(p: Parameters) extends Bundle {
 
 class RetirementBufferDebugIO(p: Parameters) extends Bundle {
   val inst = Vec(p.retirementBufferSize, Valid(new Bundle {
-    val pc = UInt(32.W)
-    val inst = UInt(32.W)
+    val pc = UInt(p.programCounterBits.W)
+    val inst = UInt(p.instructionBits.W)
     val idx = UInt(p.retirementBufferIdxWidth.W)
-    val data = if (p.enableRvv) UInt(p.rvvVlen.W) else UInt(32.W)
+    val data = if (p.enableRvv) UInt(p.rvvVlen.W) else UInt(p.xlen.W)
     val vecWrites = Option.when(p.enableRvv)(Vec(8, Valid(new Bundle {
       val data = UInt(p.rvvVlen.W)
-      val idx = UInt(5.W)
+      val idx = UInt(log2Ceil(p.rvvRegCount).W)
     })))
     val trap = Bool()
   }))
@@ -160,57 +160,62 @@ class RetirementBufferDebugIO(p: Parameters) extends Bundle {
 // Debug signals for HDL development.
 class DebugIO(p: Parameters) extends Bundle {
   val en = Output(UInt(4.W))
-  val addr = Vec(p.instructionLanes, UInt(32.W))
-  val inst = Vec(p.instructionLanes, UInt(32.W))
-  val cycles = Output(UInt(32.W))
+  val addr = Vec(p.instructionLanes, UInt(p.programCounterBits.W))
+  val inst = Vec(p.instructionLanes, UInt(p.instructionBits.W))
+  val cycles = Output(UInt(p.xlen.W))
 
   val dbus = Valid(new Bundle {
-    val addr = UInt(32.W)
+    val addr = UInt(p.lsuAddrBits.W)
     val wdata = UInt(p.axi2DataBits.W)
     val write = Bool()
   })
 
   val dispatch = Vec(p.instructionLanes, new Bundle {
     val instFire = Bool()
-    val instAddr = UInt(32.W)
-    val instInst = UInt(32.W)
+    val instAddr = UInt(p.programCounterBits.W)
+    val instInst = UInt(p.instructionBits.W)
   })
 
   val regfile = new Bundle {
     // At decode time, what registers the instructions will write to.
-    val writeAddr = Vec(p.instructionLanes, Valid(UInt(5.W)))
+    val writeAddr = Vec(p.instructionLanes, Valid(UInt(log2Ceil(p.scalarRegCount).W)))
     // Writeback to the register file.
     val writeData = Vec(p.instructionLanes + 2, Valid(new Bundle {
-      val addr = UInt(5.W)
-      val data = UInt(32.W)
+      val addr = UInt(log2Ceil(p.scalarRegCount).W)
+      val data = UInt(p.xlen.W)
     }))
   }
 
   val float = Option.when(p.enableFloat)(new Bundle {
     // Decode
-    val writeAddr = Valid(UInt(5.W))
+    val writeAddr = Valid(UInt(log2Ceil(p.floatRegCount).W))
     // Execute
     val writeData = Vec(2, Valid(new Bundle {
-      val addr = UInt(32.W)
-      val data = UInt(32.W)
+      val addr = UInt(log2Ceil(p.floatRegCount).W)
+      val data = UInt(p.xlen.W)
     }))
   })
 
   val rb = Output(new RetirementBufferDebugIO(p))
 }
 
-class RegfileReadDataIO extends Bundle {
+class RegfileReadDataIO(p: Parameters) extends Bundle {
   val valid = Output(Bool())
-  val data  = Output(UInt(32.W))
+  val data  = Output(UInt(p.xlen.W))
 }
 
-class RegfileWriteAddrIO extends Bundle {
+class RegfileWriteAddrIO(p: Parameters) extends Bundle {
   val valid = Input(Bool())
-  val addr  = Input(UInt(5.W))
+  val addr  = Input(UInt(log2Ceil(p.scalarRegCount).W))
 }
 
-class RegfileWriteDataIO extends Bundle {
-  val addr  = Input(UInt(5.W))
+class RegfileWriteDataIO(p: Parameters) extends Bundle {
+  val addr  = Input(UInt(log2Ceil(p.scalarRegCount).W))
+  val data  = Input(UInt(p.xlen.W))
+}
+
+class FloatRegfileWriteDataIO(p: Parameters) extends Bundle {
+  val addr  = Input(UInt(log2Ceil(p.floatRegCount).W))
   val data  = Input(UInt(32.W))
 }
 
@@ -236,50 +241,50 @@ object CsrOp extends ChiselEnum {
   val CSRRC = Value
 }
 
-class CsrCmd extends Bundle {
-  val addr = UInt(5.W)
+class CsrCmd(p: Parameters) extends Bundle {
+  val addr = UInt(log2Ceil(p.scalarRegCount).W)
   val index = UInt(12.W)
-  val rs1 = UInt(5.W)
+  val rs1 = UInt(log2Ceil(p.scalarRegCount).W)
   val op = CsrOp()
 }
 
-class FRegfileRead extends Bundle {
+class FRegfileRead(p: Parameters) extends Bundle {
   val valid = Input(Bool())
-  val addr  = Input(UInt(5.W))
+  val addr  = Input(UInt(log2Ceil(p.floatRegCount).W))
   val data  = Output(new Fp32)
 }
 
-class FRegfileWrite extends Bundle {
+class FRegfileWrite(p: Parameters) extends Bundle {
   val valid = Input(Bool())
-  val addr  = Input(UInt(5.W))
+  val addr  = Input(UInt(log2Ceil(p.floatRegCount).W))
   val data  = Input(new Fp32)
 }
 
 class CoreDMIO(p: Parameters) extends Bundle {
   val debug_req = Input(Bool())
   val resume_req = Input(Bool())
-  val csr = Input(Valid(new CsrCmd))
-  val csr_rs1 = Input(UInt(32.W))
-  val csr_rd = Output(Valid(UInt(32.W)))
-  val scalar_rd = Flipped(Decoupled(new RegfileWriteDataIO))
+  val csr = Input(Valid(new CsrCmd(p)))
+  val csr_rs1 = Input(UInt(p.xlen.W))
+  val csr_rd = Output(Valid(UInt(p.xlen.W)))
+  val scalar_rd = Flipped(Decoupled(new RegfileWriteDataIO(p)))
   val scalar_rs = new Bundle {
-    val idx = Input(UInt(5.W))
-    val data = Output(UInt(32.W))
+    val idx = Input(UInt(log2Ceil(p.scalarRegCount).W))
+    val data = Output(UInt(p.xlen.W))
   }
-  val float_rd = Option.when(p.enableFloat)(new FRegfileWrite)
-  val float_rs = Option.when(p.enableFloat)(new FRegfileRead)
+  val float_rd = Option.when(p.enableFloat)(new FRegfileWrite(p))
+  val float_rs = Option.when(p.enableFloat)(new FRegfileRead(p))
   val debug_mode = Output(Bool())
 }
 
 class CsrTraceIO(p: Parameters) extends Bundle {
   val valid = Bool()
   val addr = UInt(12.W)
-  val data = UInt(32.W)
+  val data = UInt(p.xlen.W)
 }
 
-class FaultManagerOutput extends Bundle {
-  val mepc = UInt(32.W)
-  val mtval = UInt(32.W)
-  val mcause = UInt(32.W)
+class FaultManagerOutput(p: Parameters) extends Bundle {
+  val mepc = UInt(p.programCounterBits.W)
+  val mtval = UInt(p.xlen.W)
+  val mcause = UInt(p.xlen.W)
   val decode = Bool()
 }

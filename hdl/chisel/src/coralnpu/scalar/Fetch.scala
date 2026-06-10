@@ -34,10 +34,10 @@ object Fetch {
 class Fetch(p: Parameters) extends FetchUnit(p) {
   // Stub
   io.pc := 0.U
-  io.fault := MakeInvalid(0.U(32.W))
+  io.fault := MakeInvalid(0.U(p.programCounterBits.W))
   // This is the only compiled and tested configuration (at this time).
-  assert(p.fetchAddrBits == 32)
-  assert(p.fetchDataBits == 256)
+  assert(p.fetchAddrBits == 32 || p.fetchAddrBits == 64)
+  assert(p.fetchDataBits == 256 || p.fetchDataBits == 128)
 
   val aslice = Slice(UInt(p.fetchAddrBits.W), true)
   val readAddr = Reg(UInt(p.fetchAddrBits.W))
@@ -61,15 +61,19 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
   val tagMsb   = p.fetchAddrBits - 1
   val indexCountBits = log2Ceil(indices - 1)
 
-  if (p.fetchCacheBytes == 1024) {
+  if (p.fetchCacheBytes == 1024 && p.fetchDataBits == 256 && p.instructionBits == 32) {
     assert(indexLsb == 5)
     assert(indexMsb == 9)
     assert(tagLsb == 10)
-    assert(tagMsb == 31)
+    assert(tagMsb == p.fetchAddrBits - 1)
     assert(indices == 32)
     assert(indexCountBits == 5)
     assert(lanes == 8)
   }
+
+  val wordSelMsb = indexLsb - 1
+  val wordSelLsb = log2Ceil(p.instructionBits / 8)
+  val instrBytes = p.instructionBits / 8
 
   val l0valid = RegInit(0.U(indices.W))
   val l0req   = RegInit(0.U(indices.W))
@@ -78,10 +82,10 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
 
   // Instruction outputs.
   val instValid = RegInit(VecInit(Seq.fill(p.instructionLanes)(false.B)))
-  val instAddr  = Reg(Vec(p.instructionLanes, UInt(p.instructionBits.W)))
+  val instAddr  = Reg(Vec(p.instructionLanes, UInt(p.programCounterBits.W)))
   val instBits  = Reg(Vec(p.instructionLanes, UInt(p.instructionBits.W)))
 
-  val instAligned0 = Cat(instAddr(0)(31, indexLsb), 0.U(indexLsb.W))
+  val instAligned0 = Cat(instAddr(0)(p.programCounterBits - 1, indexLsb), 0.U(indexLsb.W))
   val instAligned1 = instAligned0 + Cat(1.U, 0.U(indexLsb.W))
 
   val instIndex0 = instAligned0(indexMsb, indexLsb)
@@ -104,7 +108,7 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
   // Perform a branch tag lookup to see if target is in cache.
   def Predecode(addr: UInt, op: UInt): (Bool, UInt) = {
     val jal = op === BitPat("b????????????????????_?????_1101111")
-    val immed = Cat(Fill(12, op(31)), op(19,12), op(20), op(30,21), 0.U(1.W))
+    val immed = Cat(Fill(p.programCounterBits - 20, op(31)), op(19,12), op(20), op(30,21), 0.U(1.W))
     val target = addr + immed
     (jal, target)
   }
@@ -145,9 +149,9 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
 
   aslice.io.in.valid := (reqs ++ Seq(reqP, req0, req1)).reduce(_ || _) && !io.iflush.valid
   aslice.io.in.bits := MuxCase(instAligned1,
-    (0 until p.instructionLanes).map(x => reqs(x) -> Cat(io.branch(x).value(31,indexLsb), 0.U(indexLsb.W))) ++
+    (0 until p.instructionLanes).map(x => reqs(x) -> Cat(io.branch(x).value(p.programCounterBits - 1,indexLsb), 0.U(indexLsb.W))) ++
     Array(
-      reqP -> Cat(preBranchTarget(31,indexLsb), 0.U(indexLsb.W)),
+      reqP -> Cat(preBranchTarget(p.programCounterBits - 1,indexLsb), 0.U(indexLsb.W)),
       req0 -> instAligned0,
     )
   )
@@ -218,7 +222,7 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
   val fselb = (0 until p.instructionLanes).map(x => !fetchEn(x)).reduce(_ && _)
   val fsel = Cat(fsela, fselb)
 
-  val nxtInstAddrOffset = instAddr.map(x => x) ++ instAddr.map(x => x + (p.instructionLanes * 4).U)
+  val nxtInstAddrOffset = instAddr.map(x => x) ++ instAddr.map(x => x + (p.instructionLanes * instrBytes).U)
   val nxtInstAddr = (0 until p.instructionLanes).map(i =>
       (0 until (p.instructionLanes + 1)).map(
           j => MuxOR(fsel(j), nxtInstAddrOffset(j + i))).reduce(_|_))
@@ -227,9 +231,9 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
   val nxtInstIndex1 = nxtInstAddr(p.instructionLanes - 1)(indexMsb, indexLsb)
 
   val readFwd0 =
-      readDataEn && readAddr(31,indexLsb) === instAligned0(31,indexLsb)
+      readDataEn && readAddr(p.programCounterBits - 1,indexLsb) === instAligned0(p.programCounterBits - 1,indexLsb)
   val readFwd1 =
-      readDataEn && readAddr(31,indexLsb) === instAligned1(31,indexLsb)
+      readDataEn && readAddr(p.programCounterBits - 1,indexLsb) === instAligned1(p.programCounterBits - 1,indexLsb)
 
   val nxtMatch0Fwd = match0 || readFwd0
   val nxtMatch1Fwd = match1 || readFwd1
@@ -243,18 +247,18 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
 
   val nxtInstBits0 = Mux(readFwd0, readData, VecAt(l0data, instIndex0))
   val nxtInstBits1 = Mux(readFwd1, readData, VecAt(l0data, instIndex1))
-  val nxtInstBits = Wire(Vec(16, UInt(p.instructionBits.W)))
+  val nxtInstBits = Wire(Vec(2 * lanes, UInt(p.instructionBits.W)))
 
-  for (i <- 0 until 8) {
-    val offset = 32 * i
-    nxtInstBits(i + 0) := nxtInstBits0(31 + offset, offset)
-    nxtInstBits(i + 8) := nxtInstBits1(31 + offset, offset)
+  for (i <- 0 until lanes) {
+    val offset = p.instructionBits * i
+    nxtInstBits(i + 0) := nxtInstBits0(p.instructionBits - 1 + offset, offset)
+    nxtInstBits(i + lanes) := nxtInstBits1(p.instructionBits - 1 + offset, offset)
   }
 
   def BranchMatchDe(valid: Bool, value: UInt):
       (Bool, UInt, Vec[UInt], Vec[UInt]) = {
 
-    val addr = VecInit((0 until p.instructionLanes).map(x => value + (x * 4).U))
+    val addr = VecInit((0 until p.instructionLanes).map(x => value + (x * instrBytes).U))
 
     val match0 = l0valid(addr(0)(indexMsb,indexLsb)) &&
         addr(0)(tagMsb,tagLsb) === VecAt(l0tag, addr(0)(indexMsb,indexLsb))
@@ -262,21 +266,21 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
         addr(p.instructionLanes - 1)(tagMsb,tagLsb) === VecAt(l0tag, addr(p.instructionLanes - 1)(indexMsb,indexLsb))
 
     val vvalid = VecInit((0 until p.instructionLanes).map(x =>
-      Mux(addr(0)(4,2) <= (7 - x).U, match0, match1)))
+      Mux(addr(0)(wordSelMsb, wordSelLsb) <= ((lanes - 1) - x).U, match0, match1)))
 
     val muxbits0 = VecAt(l0data, addr(0)(indexMsb,indexLsb))
     val muxbits1 = VecAt(l0data, addr(p.instructionLanes - 1)(indexMsb,indexLsb))
-    val muxbits = Wire(Vec(16, UInt(p.instructionBits.W)))
+    val muxbits = Wire(Vec(2 * lanes, UInt(p.instructionBits.W)))
 
-    for (i <- 0 until 8) {
-      val offset = 32 * i
-      muxbits(i + 0) := muxbits0(31 + offset, offset)
-      muxbits(i + 8) := muxbits1(31 + offset, offset)
+    for (i <- 0 until lanes) {
+      val offset = p.instructionBits * i
+      muxbits(i + 0) := muxbits0(p.instructionBits - 1 + offset, offset)
+      muxbits(i + lanes) := muxbits1(p.instructionBits - 1 + offset, offset)
     }
 
     val bits = Wire(Vec(p.instructionLanes, UInt(p.instructionBits.W)))
     for (i <- 0 until p.instructionLanes) {
-      val idx = Cat(addr(0)(5) =/= addr(i)(5), addr(i)(4,2))
+      val idx = Cat(addr(0)(indexLsb) =/= addr(i)(indexLsb), addr(i)(wordSelMsb, wordSelLsb))
       bits(i) := VecAt(muxbits, idx)
     }
 
@@ -289,7 +293,7 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
 
 
     val addrBase = MuxCase(branch(branch.length - 1).value, (0 until branch.length - 1).map(x => branch(x).valid -> branch(x).value))
-    val addr = VecInit((0 until branch.length).map(x => addrBase + (x * 4).U))
+    val addr = VecInit((0 until branch.length).map(x => addrBase + (x * instrBytes).U))
 
     val match0 = l0valid(addr(0)(indexMsb,indexLsb)) &&
         addr(0)(tagMsb,tagLsb) === VecAt(l0tag, addr(0)(indexMsb,indexLsb))
@@ -297,21 +301,21 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
         addr(branch.length - 1)(tagMsb,tagLsb) === VecAt(l0tag, addr(branch.length - 1)(indexMsb,indexLsb))
 
     val vvalid = VecInit((0 until branch.length).map(x =>
-      Mux(addr(0)(4,2) <= (7 - x).U, match0, match1)))
+      Mux(addr(0)(wordSelMsb, wordSelLsb) <= ((lanes - 1) - x).U, match0, match1)))
 
     val muxbits0 = VecAt(l0data, addr(0)(indexMsb,indexLsb))
     val muxbits1 = VecAt(l0data, addr(branch.length - 1)(indexMsb,indexLsb))
-    val muxbits = Wire(Vec(16, UInt(p.instructionBits.W)))
+    val muxbits = Wire(Vec(2 * lanes, UInt(p.instructionBits.W)))
 
-    for (i <- 0 until 8) {
-      val offset = 32 * i
-      muxbits(i + 0) := muxbits0(31 + offset, offset)
-      muxbits(i + 8) := muxbits1(31 + offset, offset)
+    for (i <- 0 until lanes) {
+      val offset = p.instructionBits * i
+      muxbits(i + 0) := muxbits0(p.instructionBits - 1 + offset, offset)
+      muxbits(i + lanes) := muxbits1(p.instructionBits - 1 + offset, offset)
     }
 
     val bits = Wire(Vec(branch.length, UInt(p.instructionBits.W)))
     for (i <- 0 until branch.length) {
-      val idx = Cat(addr(0)(5) =/= addr(i)(5), addr(i)(4,2))
+      val idx = Cat(addr(0)(indexLsb) =/= addr(i)(indexLsb), addr(i)(wordSelMsb, wordSelLsb))
       bits(i) := VecAt(muxbits, idx)
     }
 
@@ -324,8 +328,8 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
                 io.linkPort.valid
     val bxx = op === BitPat("b???????_?????_?????_???_?????_1100011") &&
                 op(31) && op(14,13) =/= 1.U
-    val immjal = Cat(Fill(12, op(31)), op(19,12), op(20), op(30,21), 0.U(1.W))
-    val immbxx = Cat(Fill(20, op(31)), op(7), op(30,25), op(11,8), 0.U(1.W))
+    val immjal = Cat(Fill(p.programCounterBits - 20, op(31)), op(19,12), op(20), op(30,21), 0.U(1.W))
+    val immbxx = Cat(Fill(p.programCounterBits - 12, op(31)), op(7), op(30,25), op(11,8), 0.U(1.W))
     val immed = Mux(op(2), immjal, immbxx)
     val target = Mux(ret, io.linkPort.value, addr + immed)
     (jal || ret || bxx, target)
@@ -367,7 +371,7 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
   for (i <- 0 until p.instructionLanes) {
     // 1, 11, 111, ...
     nxtInstValid(i) := Mux(
-      nxtInstAddr(0)(4,2) <= (7 - i).U,
+      nxtInstAddr(0)(wordSelMsb, wordSelLsb) <= ((lanes - 1) - i).U,
       nxtMatch0,
       nxtMatch1)
 
@@ -382,7 +386,7 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
     // The (2,0) bits are the offset within the base line plus the next line.
     // The (3) bit of the index must factor the base difference of addresses
     // instAddr and nxtInstAddr which are line aligned.
-    val idx = Cat(instAddr(0)(5) =/= nxtInstAddr(i)(5), nxtInstAddr(i)(4,2))
+    val idx = Cat(instAddr(0)(indexLsb) =/= nxtInstAddr(i)(indexLsb), nxtInstAddr(i)(wordSelMsb, wordSelLsb))
     instBits(i) := Mux(brchTakenEx, brchBitsEx(i),
                    Mux(brchTakenDe, brchBitsDe(i),
                    VecAt(nxtInstBits, idx)))
@@ -390,8 +394,8 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
 
   // This pattern of separate when() blocks requires resets after the data.
   when (reset.asBool) {
-    val addr = Cat(io.csr.value(0)(31,2), 0.U(2.W))
-    instAddr := (0 until p.instructionLanes).map(i => addr + (4 * i).U)
+    val addr = Cat(io.csr.value(0)(p.xlen - 1, 2), 0.U(2.W))
+    instAddr := (0 until p.instructionLanes).map(i => addr + (instrBytes * i).U)
   }
 
   // Outputs
@@ -404,7 +408,7 @@ class Fetch(p: Parameters) extends FetchUnit(p) {
 
   // Assertions.
   for (i <- 1 until p.instructionLanes) {
-    assert(instAddr(0) + (4 * i).U === instAddr(i))
+    assert(instAddr(0) + (instrBytes * i).U === instAddr(i))
   }
 
   assert(fsel.getWidth == (p.instructionLanes + 1))

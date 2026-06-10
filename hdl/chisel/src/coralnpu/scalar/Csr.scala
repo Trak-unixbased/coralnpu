@@ -102,7 +102,7 @@ object CsrMode extends ChiselEnum {
 }
 
 /* For details, see The RISC-V Debug Specification v1.0, chapter 4.9.1 */
-class Dcsr extends Bundle {
+class Dcsr(p: Parameters) extends Bundle {
   val debugver = UInt(4.W)
   val extcause = UInt(3.W)
   val cetrig = Bool()
@@ -126,14 +126,18 @@ class Dcsr extends Bundle {
     val ret = Cat(debugver, 0.U(1.W), extcause, 0.U(4.W), cetrig, pelp, ebreakvs, ebreakvu, ebreakm, 0.U(1.W),
                   ebreaks, ebreaku, stepie, stopcount, stoptime, cause, v, mprven, nmip, step, prv)
     assert(ret.getWidth == 32)
-    ret
+    if (p.xlen == 32) {
+      ret
+    } else {
+      Cat(0.U((p.xlen - 32).W), ret)
+    }
   }
 }
 
 /* For details, see The RISC-V Debug Specification v1.0, chapter 5.7.2 */
-class Tdata1 extends Bundle {
-  val data = UInt(32.W)
-  def _type: UInt = data(31,28)
+class Tdata1(p: Parameters) extends Bundle {
+  val data = UInt(p.xlen.W)
+  def _type: UInt = data(p.xlen - 1, p.xlen - 4)
   def asWord: UInt = {
     data.asUInt
   }
@@ -163,19 +167,19 @@ class CsrCounters(p: Parameters) extends Bundle {
 class CsrBruIO(p: Parameters) extends Bundle {
   val in = new Bundle {
     val mode   = Valid(CsrMode())
-    val mcause = Valid(UInt(32.W))
-    val mepc   = Valid(UInt(32.W))
-    val mtval  = Valid(UInt(32.W))
+    val mcause = Valid(UInt(p.xlen.W))
+    val mepc   = Valid(UInt(p.programCounterBits.W))
+    val mtval  = Valid(UInt(p.xlen.W))
     val halt   = Output(Bool())
     val fault  = Output(Bool())
     val wfi    = Output(Bool())
   }
   val out = new Bundle {
     val mode  = Input(CsrMode())
-    val mepc  = Input(UInt(32.W))
-    val mtvec = Input(UInt(32.W))
+    val mepc  = Input(UInt(p.programCounterBits.W))
+    val mtvec = Input(UInt(p.programCounterBits.W))
     val interrupt = Input(Bool())
-    val interrupt_cause = Input(UInt(32.W))
+    val interrupt_cause = Input(UInt(p.xlen.W))
   }
   def defaults() = {
     out.mode := CsrMode.Machine
@@ -192,11 +196,11 @@ class Csr(p: Parameters) extends Module {
     val csr = new CsrInOutIO(p)
 
     // Decode cycle.
-    val req = Flipped(Valid(new CsrCmd))
+    val req = Flipped(Valid(new CsrCmd(p)))
 
     // Execute cycle.
-    val rs1 = Flipped(new RegfileReadDataIO)
-    val rd  = Valid(Flipped(new RegfileWriteDataIO))
+    val rs1 = Flipped(new RegfileReadDataIO(p))
+    val rd  = Valid(Flipped(new RegfileWriteDataIO(p)))
     val bru = Flipped(new CsrBruIO(p))
     val float = Option.when(p.enableFloat) { Flipped(new CsrFloatIO(p)) }
     val rvv = Option.when(p.enableRvv) { new CsrRvvIO(p) }
@@ -214,8 +218,8 @@ class Csr(p: Parameters) extends Module {
       val debug_mode = Output(Bool())
       val single_step = Output(Bool())
       val dcsr_step = Output(Bool())
-      val current_pc = Input(UInt(32.W))
-      val next_pc = Input(UInt(32.W))
+      val current_pc = Input(UInt(p.programCounterBits.W))
+      val next_pc = Input(UInt(p.programCounterBits.W))
       val debug_pc = Valid(UInt(p.fetchAddrBits.W))
     }
     val timer_irq = Input(Bool())
@@ -224,12 +228,12 @@ class Csr(p: Parameters) extends Module {
   })
 
   def LegalizeTdata1(wdata: UInt): Tdata1 = {
-    assert(wdata.getWidth == 32)
-    val newWdata = Wire(new Tdata1)
+    assert(wdata.getWidth == p.xlen)
+    val newWdata = Wire(new Tdata1(p))
     newWdata.data := Cat(
       6.U(4.W),   // type
-      wdata(27), // dmode
-      0.U(11.W),
+      wdata(p.xlen - 5), // dmode
+      0.U((p.xlen - 21).W),
       wdata(15,12) & 1.U(4.W), // action
       0.U(5.W),
       wdata(6),  // m
@@ -239,7 +243,7 @@ class Csr(p: Parameters) extends Module {
   }
 
   // Control registers. CsrAddress.RESERVED is used for invalid values.
-  val req = RegInit(MakeInvalid(new CsrCmd))
+  val req = RegInit(MakeInvalid(new CsrCmd(p)))
   req := MakeValid(io.req.valid, io.req.bits, bitsWhenInvalid=req.bits)
 
   // Pipeline Control.
@@ -251,58 +255,57 @@ class Csr(p: Parameters) extends Module {
   val mode = RegInit(CsrMode.Machine)
 
   // CSRs parallel loaded when(reset).
-  val mpc       = RegInit(0.U(32.W))
-  val msp       = RegInit(0.U(32.W))
-  val mcause    = RegInit(0.U(32.W))
-  val mtval     = RegInit(0.U(32.W))
-  val mcontext0 = RegInit(0.U(32.W))
-  val mcontext1 = RegInit(0.U(32.W))
-  val mcontext2 = RegInit(0.U(32.W))
-  val mcontext3 = RegInit(0.U(32.W))
-  val mcontext4 = RegInit(0.U(32.W))
-  val mcontext5 = RegInit(0.U(32.W))
-  val mcontext6 = RegInit(0.U(32.W))
-  val mcontext7 = RegInit(0.U(32.W))
+  val mpc       = RegInit(0.U(p.programCounterBits.W))
+  val msp       = RegInit(0.U(p.xlen.W))
+  val mcause    = RegInit(0.U(p.xlen.W))
+  val mtval     = RegInit(0.U(p.xlen.W))
+  val mcontext0 = RegInit(0.U(p.xlen.W))
+  val mcontext1 = RegInit(0.U(p.xlen.W))
+  val mcontext2 = RegInit(0.U(p.xlen.W))
+  val mcontext3 = RegInit(0.U(p.xlen.W))
+  val mcontext4 = RegInit(0.U(p.xlen.W))
+  val mcontext5 = RegInit(0.U(p.xlen.W))
+  val mcontext6 = RegInit(0.U(p.xlen.W))
+  val mcontext7 = RegInit(0.U(p.xlen.W))
 
   // Debug mode CSRs
-  val dcsr      = RegInit(0.U.asTypeOf(new Dcsr))
-  val dpc       = RegInit(0.U(32.W))
-  val dscratch0 = RegInit(0.U(32.W))
-  val dscratch1 = RegInit(0.U(32.W))
+  val dcsr      = RegInit(0.U.asTypeOf(new Dcsr(p)))
+  val dpc       = RegInit(0.U(p.programCounterBits.W))
+  val dscratch0 = RegInit(0.U(p.xlen.W))
+  val dscratch1 = RegInit(0.U(p.xlen.W))
   // Trigger CSRs
-  val tselect   = RegInit(0.U(32.W))
-  val tdata1    = RegInit("x60000000".U.asTypeOf(new Tdata1))
-  val tdata2    = RegInit(0.U(32.W))
+  val tselect   = RegInit(0.U(p.xlen.W))
+  val tdata1    = RegInit(((if (p.xlen == 32) 0x60000000L else 0x6000000000000000L).U).asTypeOf(new Tdata1(p)))
+  val tdata2    = RegInit(0.U(p.xlen.W))
   /* For details, see The RISC-V Debug Specification v1.0, chapter 5.7.5 */
-  val tinfo     = RegInit(0x01000040.U(32.W))
+  val tinfo     = RegInit(0x01000040.U(p.xlen.W))
 
   // CSRs with initialization.
   val fflags    = RegInit(0.U(5.W))
   val frm       = RegInit(0.U(3.W))
   val mstatus_mie  = RegInit(false.B)
   val mstatus_mpie = RegInit(false.B)
-  val mie       = RegInit(0.U(32.W))
-  val mtvec     = RegInit(0.U(32.W))
-  val mscratch  = RegInit(0.U(32.W))
-  val mepc      = RegInit(0.U(32.W))
-  val mhartid   = RegInit(p.hartId.U(32.W))
+  val mie       = RegInit(0.U(p.xlen.W))
+  val mtvec     = RegInit(0.U(p.programCounterBits.W))
+  val mscratch  = RegInit(0.U(p.xlen.W))
+  val mepc      = RegInit(0.U(p.programCounterBits.W))
+  val mhartid   = RegInit(p.hartId.U(p.xlen.W))
 
   val mcycle    = RegInit(0.U(64.W))
   val minstret  = RegInit(0.U(64.W))
 
-  // 32-bit MXLEN, I,M,X extensions
-  val misa      = RegInit(((
-      0x40001100 |
-      (if (p.enableRvv) { 1 << 21 /* 'V' */ } else { 0 }) |
-      (if (p.enableFloat) { 1 << 5 /* 'F' */ } else { 0 })
-  ).U)(32.W))
+  // MXLEN, I,M,X extensions
+  val misaValue = (if (p.xlen == 32) BigInt(0x40001100L) else BigInt("8000000000001100", 16)) |
+                  (if (p.enableRvv) { BigInt(1) << 21 } else { BigInt(0) }) |
+                  (if (p.enableFloat) { BigInt(1) << 5 } else { BigInt(0) })
+  val misa      = RegInit(misaValue.U(p.xlen.W))
   // CoralNPU-specific ISA register.
-  val kisa      = RegInit(0.U(32.W))
+  val kisa      = RegInit(0.U(p.xlen.W))
   // SCM Revision (spread over 5 indices)
   val kscm      = RegInit(((new ScmInfo).revision).U(160.W))
 
   // 0x426 - Google's Vendor ID
-  val mvendorid = RegInit(0x426.U(32.W))
+  val mvendorid = RegInit(0x426.U(p.xlen.W))
 
   // Unimplemented -- explicitly return zero.
   val marchid   = RegInit(0.U(1.W))
@@ -543,14 +546,14 @@ class Csr(p: Parameters) extends Module {
       ))
   dcsr := MuxCase(dcsr, Seq(
     entering_debug_mode -> {
-      val newDcsr = Wire(new Dcsr)
+      val newDcsr = Wire(new Dcsr(p))
       newDcsr := dcsr
       newDcsr.extcause := false.B
       newDcsr.cause := newCause
       newDcsr.prv := 3.U(2.W)
       newDcsr
     },
-    (req.valid && dcsrEn) -> wdata.asTypeOf(new Dcsr),
+    (req.valid && dcsrEn) -> wdata.asTypeOf(new Dcsr(p)),
   ))
   val dpc_value = Mux(newCause === DebugCause.step, io.dm.next_pc, io.dm.current_pc)
   dpc := MuxCase(dpc, Seq(

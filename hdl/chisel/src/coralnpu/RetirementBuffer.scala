@@ -20,19 +20,19 @@ import common._
 
 class RetirementBufferIO(p: Parameters) extends Bundle {
   val inst = Input(Vec(p.instructionLanes, Decoupled(new FetchInstruction(p))))
-  val targets = Input(Vec(p.instructionLanes, UInt(32.W)))
-  val jalrTargets = Input(Vec(p.instructionLanes, UInt(32.W)))
+  val targets = Input(Vec(p.instructionLanes, UInt(p.programCounterBits.W)))
+  val jalrTargets = Input(Vec(p.instructionLanes, UInt(p.programCounterBits.W)))
   val jump = Input(Vec(p.instructionLanes, Bool()))
   val branch = Input(Vec(p.instructionLanes, Bool()))
-  val storeComplete = Input(Valid(UInt(32.W)))
-  val writeAddrScalar = Input(Vec(p.instructionLanes, new RegfileWriteAddrIO))
-  val writeDataScalar = Input(Vec(p.instructionLanes + 2, Valid(new RegfileWriteDataIO)))
-  val writeAddrFloat = Option.when(p.enableFloat)(Input(new RegfileWriteAddrIO))
-  val writeDataFloat = Option.when(p.enableFloat)(Input(Vec(2, Valid(new RegfileWriteDataIO))))
-  val writeAddrVector = Option.when(p.enableRvv)(Input(Vec(p.instructionLanes, new RegfileWriteAddrIO)))
+  val storeComplete = Input(Valid(UInt(p.programCounterBits.W)))
+  val writeAddrScalar = Input(Vec(p.instructionLanes, new RegfileWriteAddrIO(p)))
+  val writeDataScalar = Input(Vec(p.instructionLanes + 2, Valid(new RegfileWriteDataIO(p))))
+  val writeAddrFloat = Option.when(p.enableFloat)(Input(new RegfileWriteAddrIO(p)))
+  val writeDataFloat = Option.when(p.enableFloat)(Input(Vec(2, Valid(new RegfileWriteDataIO(p)))))
+  val writeAddrVector = Option.when(p.enableRvv)(Input(Vec(p.instructionLanes, new RegfileWriteAddrIO(p))))
   val writeDataVector = Option.when(p.enableRvv)(Input(Vec(p.instructionLanes, Valid(new VectorWriteDataIO(p)))))
-  val fault = Input(Valid(new FaultManagerOutput))
-  val nSpace = Output(UInt(32.W))
+  val fault = Input(Valid(new FaultManagerOutput(p)))
+  val nSpace = Output(UInt(log2Ceil(p.retirementBufferSize + 1).W))
   val nRetired = Output(UInt(log2Ceil(p.retirementBufferSize + 1).W))
   val empty = Output(Bool())
   val trapPending = Output(Bool())
@@ -55,8 +55,8 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
   val noWriteRegIdx = ~0.U(idxWidth.W)
   val storeRegIdx = (noWriteRegIdx - 1.U)
   class Instruction extends Bundle {
-    val addr = UInt(32.W) // Program counter address
-    val inst = if (mini) UInt(0.W) else UInt(32.W) // Instruction bits
+    val addr = UInt(p.programCounterBits.W) // Program counter address
+    val inst = if (mini) UInt(0.W) else UInt(p.instructionBits.W) // Instruction bits
     val idx = UInt(idxWidth.W) // Register Index
     val trap = Bool() // Instruction causing a trap to occur.
     val isControlFlow = Bool() // True if instruction is a jump or branch.
@@ -93,8 +93,8 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
   // These are used to verify control flow continuity (linkOk) for the first instruction of a dispatch group.
   // If the fetcher sends an instruction that doesn't match the expected target (e.g. due to mis-prediction
   // in the fetcher), linkOk will be false, eventually triggering a trap.
-  val regLastTarget = RegInit(0.U(32.W))
-  val regLastAddr = RegInit(0.U(32.W))
+  val regLastTarget = RegInit(0.U(p.programCounterBits.W))
+  val regLastAddr = RegInit(0.U(p.programCounterBits.W))
   val regLastIsBranch = RegInit(false.B)
 
   // Create Instruction wires out of io.inst + io.writeAddrScalar, and align.
@@ -223,7 +223,7 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
 
   class VectorWrite extends Bundle {
     val data = UInt(p.rvvVlen.W)
-    val idx = UInt(5.W)
+    val idx = UInt(log2Ceil(p.rvvRegCount).W)
   }
 
   // Maintain a re-order buffer of instruction completion result.

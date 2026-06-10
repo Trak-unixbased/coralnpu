@@ -193,7 +193,7 @@ class SCore(p: Parameters) extends Module {
   csr.io.csr.in.value(12) := fetch.io.pc
 
   // Arbitrate requests from Dispatch and DM
-  val csrReqArbiter = Module(new Arbiter(new CsrCmd, 2))
+  val csrReqArbiter = Module(new Arbiter(new CsrCmd(p), 2))
   csrReqArbiter.io.in(0).bits := dispatch.io.csr.bits
   csrReqArbiter.io.in(0).valid := dispatch.io.csr.valid
   csrReqArbiter.io.in(1).valid := io.dm.csr.valid
@@ -202,7 +202,7 @@ class SCore(p: Parameters) extends Module {
   csr.io.req.bits := csrReqArbiter.io.out.bits
   csr.io.req.valid := csrReqArbiter.io.out.valid
 
-  val dmRs1 = Wire(new RegfileReadDataIO)
+  val dmRs1 = Wire(new RegfileReadDataIO(p))
   dmRs1.valid := true.B
   dmRs1.data := io.dm.csr_rs1
   csr.io.rs1 := Mux(RegNext(dispatch.io.csr.valid, false.B), regfile.io.readData(0), dmRs1)
@@ -376,7 +376,7 @@ class SCore(p: Parameters) extends Module {
         asyncFrd.bits.addr)
       fRegfile.get.io.write_ports(1).data := Mux(lsuWriting,
         floatCore.get.io.write_ports(1).data,
-        Fp32.fromWord(asyncFrd.bits.data))
+        Fp32.fromWord(asyncFrd.bits.data(31, 0)))
     } else {
       fRegfile.get.io.write_ports(1) := floatCore.get.io.write_ports(1)
     }
@@ -406,7 +406,7 @@ class SCore(p: Parameters) extends Module {
                      floatCore.map(x => Seq(x.io.scalar_rd)).getOrElse(Seq()) ++
                      Seq(io.dm.scalar_rd)
 
-  val arb = Module(new Arbiter(new RegfileWriteDataIO, mluDvuInputs.length))
+  val arb = Module(new Arbiter(new RegfileWriteDataIO(p), mluDvuInputs.length))
   arb.io.in <> mluDvuInputs
   arb.io.out.ready := true.B
   regfile.io.writeData(mluDvuOffset).valid := arb.io.out.valid

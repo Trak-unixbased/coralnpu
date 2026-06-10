@@ -405,17 +405,17 @@ class RvvCoreWrapper(p: Parameters) extends BlackBox with HasBlackBoxInline
     val frm = Input(UInt(3.W))
 
     val inst = Vec(p.instructionLanes,
-        Flipped(Decoupled(new RvvCompressedInstruction)))
+        Flipped(Decoupled(new RvvCompressedInstruction(p))))
 
-    val rs = Vec(p.instructionLanes * 2, Flipped(new RegfileReadDataIO))
-    val rd = Vec(p.instructionLanes, Valid(new RegfileWriteDataIO))
+    val rs = Vec(p.instructionLanes * 2, Flipped(new RegfileReadDataIO(p)))
+    val rd = Vec(p.instructionLanes, Valid(new RegfileWriteDataIO(p)))
     val frs = Vec(p.instructionLanes, Input(UInt(32.W)))
 
-    val async_rd = Decoupled(new RegfileWriteDataIO)
-    val async_frd = Decoupled(new RegfileWriteDataIO)
+    val async_rd = Decoupled(new RegfileWriteDataIO(p))
+    val async_frd = Decoupled(new RegfileWriteDataIO(p))
 
     val rd_rob2rt_o = Vec(4, new Rob2Rt(p))
-    val trap = Output(Valid(new RvvCompressedInstruction))
+    val trap = Output(Valid(new RvvCompressedInstruction(p)))
 
     val vcsr_valid = Output(Bool())
     val vcsr_vstart = Output(UInt(7.W))

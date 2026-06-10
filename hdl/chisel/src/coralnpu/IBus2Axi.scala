@@ -40,7 +40,7 @@ class IBus2Axi(p: Parameters, id: Int = 0) extends Module {
   val sresp = RegInit(0.U(2.W))
   val sdataValid = RegInit(false.B)
 
-  val saddr = Cat(io.ibus.addr(31, linebit), 0.U(linebit.W))
+  val saddr = Cat(io.ibus.addr(p.fetchAddrBits - 1, linebit), 0.U(linebit.W))
   val addrMatch = saddr === saddrReg
 
   // Handshake logic: we are ready if AXI just responded or we have buffered data,
