@@ -153,8 +153,9 @@ cocotb_test_suite(
 
 # BEGIN_TESTCASES_FOR_tlul_socket_1n_128_cocotb_test
 TLUL_SOCKET_1N_TESTCASES = [
-    "test_steering",
+    "test_steering_and_locking",
     "test_error_response",
+    "test_random_backpressure",
 ]
 # END_TESTCASES_FOR_tlul_socket_1n_128_cocotb_test
 
@@ -168,6 +169,7 @@ cocotb_test_suite(
         "test_module": ["test_tlul_socket_1n.py"],
         "deps": [
             "//coralnpu_test_utils:TileLinkULInterface",
+            "//coralnpu_test_utils:TlulVerificationEnv",
         ],
         "waves": True,
         "size": "small",

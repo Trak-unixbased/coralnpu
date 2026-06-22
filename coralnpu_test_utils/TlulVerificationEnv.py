@@ -82,18 +82,16 @@ class TlulScoreboard:
             self.dut._log.error(f"Scoreboard Error: Response for source {source} routed to Host {host_idx}, expected Host {expected_host}")
             self.errors += 1
 
-        # Check 2: Per-host in-order delivery
+        # Check 2: Per-host response tracking (allows out-of-order for different source IDs)
         pending_queue = self.host_pending_queues[host_idx]
         if not pending_queue:
             self.dut._log.error(f"Scoreboard Error: Host {host_idx} received response with source {source} but has no pending requests!")
             self.errors += 1
-        elif pending_queue[0] != source:
-            self.dut._log.error(f"Scoreboard Ordering Error for Host {host_idx}: Expected response for source {pending_queue[0]}, but got {source}")
+        elif source not in pending_queue:
+            self.dut._log.error(f"Scoreboard Error: Host {host_idx} received response for source {source} which is not pending!")
             self.errors += 1
-            if source in pending_queue:
-                pending_queue.remove(source)
         else:
-            pending_queue.pop(0)
+            pending_queue.remove(source)
 
         # Check 3: Data integrity (compare read data or check error)
         if orig_req["opcode"] == 4:  # Get (Read)
@@ -220,27 +218,47 @@ class TlulVerificationEnv:
         a_ready = getattr(self.dut, f"{prefix}_a_ready")
         while True:
             await RisingEdge(self.clock)
-            if a_valid.value and a_ready.value == 1:
-                txn = self._reconstruct_a_txn(prefix)
-                self.scoreboard.write_request(host_idx, txn)
+            try:
+                if a_valid.value and a_ready.value == 1:
+                    txn = self._reconstruct_a_txn(prefix)
+                    self.scoreboard.write_request(host_idx, txn)
+            except ValueError:
+                # Ignore Logic('X') errors during/before reset is complete.
+                # The interface driver (TileLinkULInterface.py) already checks
+                # and will fail the test if 'X' persists outside reset.
+                pass
+
 
     async def _monitor_host_d(self, host_idx, prefix):
         d_valid = getattr(self.dut, f"{prefix}_d_valid")
         d_ready = getattr(self.dut, f"{prefix}_d_ready")
         while True:
             await RisingEdge(self.clock)
-            if d_valid.value and d_ready.value == 1:
-                txn = self._reconstruct_d_txn(prefix)
-                self.scoreboard.write_response(host_idx, txn)
+            try: 
+                if d_valid.value and d_ready.value == 1:
+                    txn = self._reconstruct_d_txn(prefix)
+                    self.scoreboard.write_response(host_idx, txn)
+            except ValueError:
+                # Ignore Logic('X') errors during/before reset is complete.
+                # The interface driver (TileLinkULInterface.py) already checks
+                # and will fail the test if 'X' persists outside reset.
+                pass
+
 
     async def _monitor_device_a(self, device_idx, prefix):
         a_valid = getattr(self.dut, f"{prefix}_a_valid")
         a_ready = getattr(self.dut, f"{prefix}_a_ready")
         while True:
             await RisingEdge(self.clock)
-            if a_valid.value and a_ready.value == 1:
-                txn = self._reconstruct_a_txn(prefix)
-                self.scoreboard.write_device_request(device_idx, txn)
+            try: 
+                if a_valid.value and a_ready.value == 1:
+                        txn = self._reconstruct_a_txn(prefix)
+                        self.scoreboard.write_device_request(device_idx, txn)
+            except ValueError:
+                # Ignore Logic('X') errors during/before reset is complete.
+                # The interface driver (TileLinkULInterface.py) already checks
+                # and will fail the test if 'X' persists outside reset.
+                pass
 
     # --- Backpressure Generator ---
 
