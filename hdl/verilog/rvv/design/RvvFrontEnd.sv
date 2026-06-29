@@ -240,18 +240,23 @@ module RvvFrontEnd#(parameter N = 4,
         if (inst_config_state[i+1].vill) begin
           // If illegal, set to 0. See end of section 6.1 of RVV spec.
           inst_config_state[i+1].vl = 0;
+          inst_config_state[i+1].sew = SEW8;
+          inst_config_state[i+1].lmul = LMUL1;
+          inst_config_state[i+1].lmul_orig = LMUL1;
+          inst_config_state[i+1].ta = 0;
+          inst_config_state[i+1].ma = 0;
         end else if (avl[i] > vlmax[i]) begin
           // One possible valid impl according to 6.3 of RVV spec.
           inst_config_state[i+1].vl = vlmax[i];
+          inst_config_state[i+1].lmul = inst_config_state[i+1].lmul_orig;
         end else begin
           inst_config_state[i+1].vl = avl[i];
+          inst_config_state[i+1].lmul = inst_config_state[i+1].lmul_orig;
         end
-
-        inst_config_state[i+1].lmul = inst_config_state[i+1].lmul_orig;
 
         // TODO: filter out illegal lmul for widening ALU ops and non-indexed
         // LSU ops where eew>sew.
-        if (REDUCE_LMUL) begin
+        if (REDUCE_LMUL && !inst_config_state[i+1].vill) begin
           // We use vl here, it's guaranteed to be <= vlmax. This operation
           // should either reduce lmul or keep it untouched.
           // We don't need to worry about eew&emul here:

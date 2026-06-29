@@ -245,14 +245,28 @@ def get_tohost_addr(elf_path: str) -> Optional[int]:
 
 def build_simulator(mpact_root: str,
                     simulator: str,
-                    mpact_riscv_root: Optional[str] = None) -> bool:
+                    mpact_riscv_root: Optional[str] = None,
+                    verilator_bin: Optional[str] = None,
+                    verilator_root: Optional[str] = None,
+                    uvm_root: Optional[str] = None) -> bool:
     logging.info("Building UVM Simulator (simv)...")
     env = os.environ.copy()
     env["CORALNPU_MPACT"] = mpact_root
     if mpact_riscv_root:
         env["CORALNPU_MPACT_RISCV"] = mpact_riscv_root
+    if verilator_bin:
+        env["VERILATOR"] = verilator_bin
+    if verilator_root:
+        env["VERILATOR_ROOT"] = verilator_root
+        env["VERILATOR_CXX"] = os.environ.get("VERILATOR_CXX", "g++")
+        env["VERILATOR_AR"] = os.environ.get("VERILATOR_AR", "ar")
+        env["VERILATOR_PYTHON3"] = os.environ.get("VERILATOR_PYTHON3", "python3")
+    if uvm_root:
+        env["UVM"] = uvm_root
+
 
     cmd = ["make", "-C", "tests/uvm", "compile", f"SIMULATOR={simulator}"]
+
     try:
         subprocess.run(cmd, check=True, env=env)
         return True
@@ -271,6 +285,18 @@ def build_spike() -> Optional[str]:
             "bazel-bin/external/riscv_isa_sim/riscv_isa_sim/bin/spike")
     except subprocess.CalledProcessError as e:
         logging.error(f"Spike build failed: {e}")
+        return None
+
+
+def build_verilator() -> Optional[str]:
+    logging.info("Building Verilator Simulator...")
+    cmd = ["bazel", "build", "@verilator//:verilator_bin"]
+    try:
+        subprocess.run(cmd, check=True)
+        # Return the absolute path to the binary
+        return os.path.abspath("bazel-bin/external/verilator/verilator_bin")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Verilator build failed: {e}")
         return None
 
 
@@ -530,6 +556,62 @@ def resolve_default_mpact_root() -> str:
         sys.exit(1)
 
 
+def resolve_verilator_root(verilator_bin: str) -> str:
+    # verilator_bin is at .../bazel-bin/external/verilator/verilator_bin
+    # runfiles are at .../bazel-bin/external/verilator/verilator_bin.runfiles/verilator
+    runfiles_dir = verilator_bin + ".runfiles"
+    verilator_root = os.path.join(runfiles_dir, "verilator")
+    if os.path.isdir(verilator_root):
+        return verilator_root
+    try:
+        logging.info("Dynamically resolving @verilator path via Bazel...")
+        output_base = subprocess.check_output(["bazel", "info", "output_base"]).decode("utf-8").strip()
+        default_path = os.path.join(output_base, "external", "verilator")
+        if os.path.isdir(default_path):
+            return default_path
+
+        external_dir = os.path.join(output_base, "external")
+        if os.path.isdir(external_dir):
+            for entry in os.listdir(external_dir):
+                if entry.startswith("verilator"):
+                    candidate = os.path.join(external_dir, entry)
+                    if os.path.isdir(candidate):
+                        return candidate
+        return default_path
+    except Exception as e:
+        logging.warning(f"Failed to resolve VERILATOR_ROOT dynamically: {e}")
+        return ""
+
+
+def resolve_uvm_root() -> str:
+    # 1. If UVM is already in environment, use it as override
+    if "UVM" in os.environ:
+        resolved_path = os.environ["UVM"]
+        logging.info(f"Using UVM override from environment: {resolved_path}")
+        return resolved_path
+
+    # 2. Try to resolve via Bazel query
+    try:
+        logging.info("Dynamically resolving @uvm path via Bazel...")
+        output = subprocess.check_output(
+            ["bazel", "query", "--output=location", "@uvm//:uvm_src"],
+            stderr=subprocess.DEVNULL
+        ).decode("utf-8").strip()
+        if ":" in output:
+            build_file_path = output.split(":")[0]
+            uvm_root = os.path.dirname(build_file_path)
+            if os.path.isdir(uvm_root):
+                logging.info(f"Resolved @uvm path: {uvm_root}")
+                return uvm_root
+    except Exception as e:
+        logging.warning(f"Failed to resolve @uvm path via Bazel: {e}")
+
+    return ""
+
+
+
+
+
 def get_mpact_configs(args) -> Tuple[str, Optional[str]]:
     if args.mpact_root:
         mpact_root = os.path.abspath(args.mpact_root)
@@ -638,9 +720,13 @@ def run_spike_timeout_check(tests_to_run: List[Tuple[str, str]],
 
 def run_full_regression(tests_to_run: List[Tuple[str, str]], spike_bin: str,
                         mpact_root: str, mpact_riscv_root: Optional[str],
-                        temp_elf_dir: str, simulator: str):
+                        temp_elf_dir: str, simulator: str,
+                        verilator_bin: Optional[str] = None,
+                        verilator_root: Optional[str] = None,
+                        uvm_root: Optional[str] = None):
     # Build the UVM simulator once
-    if not build_simulator(mpact_root, simulator, mpact_riscv_root):
+    if not build_simulator(mpact_root, simulator, mpact_riscv_root, verilator_bin, verilator_root, uvm_root):
+
         logging.critical("ERROR: Simulator build failed. Aborting regression.")
         sys.exit(1)
 
@@ -704,6 +790,17 @@ def run_full_regression(tests_to_run: List[Tuple[str, str]], spike_bin: str,
 
     env = os.environ.copy()
     env["CORALNPU_MPACT"] = mpact_root
+    if verilator_bin:
+        env["VERILATOR"] = verilator_bin
+    if verilator_root:
+        env["VERILATOR_ROOT"] = verilator_root
+        env["VERILATOR_CXX"] = os.environ.get("VERILATOR_CXX", "g++")
+        env["VERILATOR_AR"] = os.environ.get("VERILATOR_AR", "ar")
+        env["VERILATOR_PYTHON3"] = os.environ.get("VERILATOR_PYTHON3", "python3")
+    if uvm_root:
+        env["UVM"] = uvm_root
+
+
     regression_log_path = os.path.join(logs_dir, "regression.log")
 
     logging.info("--- Starting Batch UVM Regression ---")
@@ -875,12 +972,25 @@ def main():
     with tempfile.TemporaryDirectory(prefix="uvm_reg_") as temp_elf_dir:
         logging.info(f"Using temp ELF directory: {temp_elf_dir}")
 
+        verilator_bin = None
+        verilator_root = None
+        uvm_root = resolve_uvm_root()
+        if args.simulator == "verilator":
+            verilator_bin = build_verilator()
+            if not verilator_bin or not os.path.exists(verilator_bin):
+                logging.critical("ERROR: Verilator binary not found. Aborting.")
+                sys.exit(1)
+            verilator_root = resolve_verilator_root(verilator_bin)
+            logging.info(f"Using VERILATOR_ROOT: {verilator_root}")
+
         if args.check_spike_timeouts:
             run_spike_timeout_check(tests_to_run, spike_bin, temp_elf_dir)
             return
 
         run_full_regression(tests_to_run, spike_bin, mpact_root,
-                            mpact_riscv_root, temp_elf_dir, args.simulator)
+                            mpact_riscv_root, temp_elf_dir, args.simulator,
+                            verilator_bin, verilator_root, uvm_root)
+
 
 
 if __name__ == "__main__":

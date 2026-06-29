@@ -33,13 +33,13 @@ async def setup_dut(dut, boot_addr=0):
     """Common setup logic for all tests."""
     for signal in dir(dut):
         if signal.startswith("io_external_devices_"):
-            if "_d_" in signal or "_a_ready" in signal:
+            if "_d_valid" in signal or "_d_bits_" in signal or "_a_ready" in signal:
                 try:
                     getattr(dut, signal).value = 0
                 except Exception:
                     pass
         elif signal.startswith("io_external_hosts_"):
-            if "_a_" in signal or "_d_ready" in signal:
+            if "_a_valid" in signal or "_a_bits_" in signal or "_d_ready" in signal:
                 try:
                     getattr(dut, signal).value = 0
                 except Exception:

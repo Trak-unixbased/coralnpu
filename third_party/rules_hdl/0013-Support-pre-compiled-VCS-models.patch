@@ -1,17 +1,18 @@
-From 1234567890abcdef Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Alex Van Damme <atv@google.com>
-Date: Thu, 04 Jun 2026 10:33:43 -0700
-Subject: [PATCH] Support pre-compiled VCS models
+Date: Thu, 4 Jun 2026 10:33:43 -0700
+Subject: [PATCH 13/16] Support pre-compiled VCS models
 
 ---
- cocotb/cocotb.bzl        |  2 +-
- cocotb/cocotb_wrapper.py | 91 +++++++++++++++++++++++++++++++++++++++++++++++-
- 2 files changed, 91 insertions(+), 2 deletions(-)
+ cocotb/cocotb.bzl        |   2 +-
+ cocotb/cocotb_wrapper.py | 101 +++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 97 insertions(+), 6 deletions(-)
 
-diff -urN a/cocotb/cocotb.bzl b/cocotb/cocotb.bzl
---- a/cocotb/cocotb.bzl	2026-06-05 13:13:20.943874664 -0700
-+++ b/cocotb/cocotb.bzl	2026-06-05 13:20:21.106325355 -0700
-@@ -165,7 +165,7 @@
+diff --git a/cocotb/cocotb.bzl b/cocotb/cocotb.bzl
+index 1c175c7..0157f85 100644
+--- a/cocotb/cocotb.bzl
++++ b/cocotb/cocotb.bzl
+@@ -165,7 +165,7 @@ def _get_test_command(ctx, verilog_files, vhdl_files):
          waves_args +
          seed_args +
          test_module_args +
@@ -20,9 +21,10 @@ diff -urN a/cocotb/cocotb.bzl b/cocotb/cocotb.bzl
          ("&& (cp -fr `pwd`/sim_build/simv.vdb $TEST_UNDECLARED_OUTPUTS_DIR || true)" if ctx.attr.sim_name == "vcs" else "")
      )
  
-diff -urN a/cocotb/cocotb_wrapper.py b/cocotb/cocotb_wrapper.py
---- a/cocotb/cocotb_wrapper.py	2026-06-05 13:13:20.943874664 -0700
-+++ b/cocotb/cocotb_wrapper.py	2026-06-05 13:20:21.107325354 -0700
+diff --git a/cocotb/cocotb_wrapper.py b/cocotb/cocotb_wrapper.py
+index b940935..e7093e7 100644
+--- a/cocotb/cocotb_wrapper.py
++++ b/cocotb/cocotb_wrapper.py
 @@ -14,6 +14,9 @@
  
  import argparse
@@ -33,7 +35,7 @@ diff -urN a/cocotb/cocotb_wrapper.py b/cocotb/cocotb_wrapper.py
  import sys
  from cocotb_tools.runner import get_runner
  from cocotb_tools.check_results import get_results
-@@ -172,6 +175,11 @@
+@@ -172,6 +175,11 @@ def cocotb_argument_parser():
          default=None,
          help="Verilated model binary",
      )
@@ -45,7 +47,7 @@ diff -urN a/cocotb/cocotb_wrapper.py b/cocotb/cocotb_wrapper.py
  
      return parser
  
-@@ -196,13 +204,96 @@
+@@ -196,13 +204,96 @@ if __name__ == "__main__":
      cocotb_tools.runner.MAX_PARALLEL_BUILD_JOBS = 32
      runner = get_runner(args.sim)
  
@@ -54,7 +56,8 @@ diff -urN a/cocotb/cocotb_wrapper.py b/cocotb/cocotb_wrapper.py
 -        from bazel_tools.tools.python.runfiles import runfiles
 +    if args.sim == "vcs" and args.model:
 +        main_ws = args.main_workspace or "coralnpu_hw"
-+        r = runfiles.Create()
+         r = runfiles.Create()
+-        sim_build = os.path.dirname(r.Rlocation(f"coralnpu_hw/{args.model}"))
 +        model_path = args.model
 +        if model_path.startswith("../"):
 +            model_path = model_path[3:]
@@ -126,8 +129,7 @@ diff -urN a/cocotb/cocotb_wrapper.py b/cocotb/cocotb_wrapper.py
 +
 +    elif args.sim == "verilator":
 +        main_ws = args.main_workspace or "coralnpu_hw"
-         r = runfiles.Create()
--        sim_build = os.path.dirname(r.Rlocation(f"coralnpu_hw/{args.model}"))
++        r = runfiles.Create()
 +        model_path = args.model
 +        if model_path.startswith("../"):
 +            model_path = model_path[3:]

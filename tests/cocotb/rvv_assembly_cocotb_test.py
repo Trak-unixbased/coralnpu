@@ -233,12 +233,17 @@ async def core_mini_vcsr_test(dut):
             result_illegal = (vtype_result & (1 << 31)) >> 31
             assert (expected_illegal == result_illegal)
 
-            if expected_illegal:
-                ma_result = (vtype_result & (1 << 7)) >> 7
-                ta_result = (vtype_result & (1 << 6)) >> 6
-                sew_result = (vtype_result & (0b111 << 3)) >> 3
-                lmul_result = (vtype_result & 0b111)
+            ma_result = (vtype_result & (1 << 7)) >> 7
+            ta_result = (vtype_result & (1 << 6)) >> 6
+            sew_result = (vtype_result & (0b111 << 3)) >> 3
+            lmul_result = (vtype_result & 0b111)
 
+            if expected_illegal:
+                assert (ma_result == 0)
+                assert (ta_result == 0)
+                assert (sew_result == 0)
+                assert (lmul_result == 0)
+            else:
                 assert (ma == ma_result)
                 assert (ta == ta_result)
                 assert (sew == sew_result)

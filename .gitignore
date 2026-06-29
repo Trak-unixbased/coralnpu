@@ -25,3 +25,6 @@ toolchain/build_scripts/riscv-gnu-toolchain
 toolchain/build_scripts/llvm-project
 toolchain/build_scripts/libgloss-htif
 toolchain/build_scripts/*.tar.*
+# UVM outputs
+uvm_regression_*/
+uvm_regression_*.zip

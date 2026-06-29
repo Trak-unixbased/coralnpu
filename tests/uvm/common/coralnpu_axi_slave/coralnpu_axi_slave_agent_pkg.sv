@@ -77,7 +77,9 @@ package coralnpu_axi_slave_agent_pkg;
       forever begin
         // Wait for write address
         vif.tb_slave_cb.awready <= 1'b0;
-        @(vif.tb_slave_cb iff vif.tb_slave_cb.awvalid);
+        do begin
+          @(vif.tb_slave_cb);
+        end while (vif.tb_slave_cb.awvalid !== 1'b1);
         current_bid = vif.tb_slave_cb.awid;
         current_addr = vif.tb_slave_cb.awaddr;
         current_len = vif.tb_slave_cb.awlen;
@@ -115,7 +117,9 @@ package coralnpu_axi_slave_agent_pkg;
         // Loop through all beats in the burst
         for (int i = 0; i <= current_len; i++) begin
              vif.tb_slave_cb.wready <= 1'b1;
-             @(vif.tb_slave_cb iff vif.tb_slave_cb.wvalid);
+             do begin
+               @(vif.tb_slave_cb);
+             end while (vif.tb_slave_cb.wvalid !== 1'b1);
 
              // Process data if valid address
              if (resp == AXI_OKAY) begin
@@ -172,7 +176,9 @@ package coralnpu_axi_slave_agent_pkg;
       forever begin
         // Wait for read address
         vif.tb_slave_cb.arready <= 1'b0;
-        @(vif.tb_slave_cb iff vif.tb_slave_cb.arvalid);
+        do begin
+          @(vif.tb_slave_cb);
+        end while (vif.tb_slave_cb.arvalid !== 1'b1);
         current_rid = vif.tb_slave_cb.arid;
         current_len = vif.tb_slave_cb.arlen;
         current_addr = vif.tb_slave_cb.araddr;

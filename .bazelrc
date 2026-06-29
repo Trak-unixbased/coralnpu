@@ -32,6 +32,7 @@ build --host_javacopt="-nowarn"
 build --workspace_status_command=utils/get_workspace_status.sh
 
 build --experimental_cc_shared_library
+build --java_runtime_version=remotejdk_11
 run --java_runtime_version=remotejdk_11
 test --java_runtime_version=remotejdk_11
 

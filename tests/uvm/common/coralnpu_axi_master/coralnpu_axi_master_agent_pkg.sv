@@ -174,7 +174,9 @@ package coralnpu_axi_master_agent_pkg;
       logic [1:0]       received_bresp;
       forever begin
         vif.tb_master_cb.bready <= 1'b0; // Default to not ready
-        @(vif.tb_master_cb iff vif.tb_master_cb.bvalid); // Wait for valid response
+        do begin
+          @(vif.tb_master_cb);
+        end while (vif.tb_master_cb.bvalid !== 1'b1);
         received_bid = vif.tb_master_cb.bid;
         received_bresp = vif.tb_master_cb.bresp;
         `uvm_info(get_type_name(), $sformatf("B Channel Rcvd: ID=%0d RESP=%b", received_bid, received_bresp), UVM_HIGH)
@@ -195,7 +197,9 @@ package coralnpu_axi_master_agent_pkg;
       logic             received_rlast;
       forever begin
         vif.tb_master_cb.rready <= 1'b0; // Default to not ready
-        @(vif.tb_master_cb iff vif.tb_master_cb.rvalid); // Wait for valid data/response
+        do begin
+          @(vif.tb_master_cb);
+        end while (vif.tb_master_cb.rvalid !== 1'b1);
         received_rid = vif.tb_master_cb.rid;
         received_rresp = vif.tb_master_cb.rresp;
         received_rdata = vif.tb_master_cb.rdata;

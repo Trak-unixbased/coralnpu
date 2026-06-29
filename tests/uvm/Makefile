@@ -33,6 +33,13 @@ VERILATOR ?= verilator
 CXX = clang++
 SIMULATOR ?= vcs
 
+ifeq ($(SIMULATOR),vcs)
+SIM_BIN = $(VCS)
+else
+SIM_BIN = $(VERILATOR)
+endif
+
+
 # UVM DV Directories
 COMMON_DIR = ./common
 TB_DIR = ./tb
@@ -114,7 +121,8 @@ SIM_COMPILE_OPTS = \
 	"$(UVM)/src/dpi/uvm_dpi.cc" \
 	"$(MPACT_LIB_PATH)" \
 	-Mdir $(BUILD_DIR) \
-	-o simv
+	-o simv \
+	-MAKEFLAGS "VERILATOR_ROOT=$(VERILATOR_ROOT)"
 SIM_EXEC = $(BUILD_DIR)/simv
 endif
 
@@ -173,7 +181,7 @@ rtl:
 # Compile the design
 $(SIM_EXEC): $(FILE_LIST) dirs build_mpact_lib rtl
 	@echo "--- Compiling Simulation ---"
-	$(SIMULATOR) $(SIM_COMPILE_OPTS) -f $(FILE_LIST) $(GENERATED_RTL_SRC)
+	$(SIM_BIN) $(SIM_COMPILE_OPTS) -f $(FILE_LIST) $(GENERATED_RTL_SRC)
 	@echo "--- Compilation Finished ---"
 
 compile: $(SIM_EXEC)
