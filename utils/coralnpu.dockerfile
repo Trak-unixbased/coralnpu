@@ -28,6 +28,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,t
         build-essential \
         ca-certificates \
         ccache \
+        cmake \
         curl \
         fuse3 \
         gawk \
@@ -38,6 +39,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,t
         libmpfr-dev \
         libusb-1.0-0-dev \
         lsb-release \
+        ninja-build \
         openjdk-21-jdk-headless \
         openjdk-21-jre-headless \
         python-is-python3 \
@@ -45,6 +47,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,t
         python3-pip \
         python3-setuptools \
         python3-venv \
+        shfmt \
         srecord \
         sudo \
         tzdata \
