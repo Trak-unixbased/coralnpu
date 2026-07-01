@@ -44,6 +44,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked --mount=type=cache,t
         openjdk-21-jre-headless \
         python-is-python3 \
         python3 \
+        python3-numpy \
         python3-pip \
         python3-setuptools \
         python3-venv \
