@@ -27,7 +27,7 @@ class DmaDesc extends Bundle {
 }
 
 object SpiFrameParserPhase extends ChiselEnum {
-  val sOp, sAddr3, sAddr2, sAddr1, sAddr0, sLen1, sLen0, sSendDesc, sWriteData, sWaitEnd = Value
+  val sOp, sAddr3, sAddr2, sAddr1, sAddr0, sLen1, sLen0, sSendDesc, sWriteData, sWaitEnd, sReset = Value
 }
 
 object DmaEnginePhase extends ChiselEnum {
@@ -48,11 +48,22 @@ class SpiFrameParserRegs extends Bundle {
 
   def onOp(byte_valid: Bool, byte_bits: UInt): SpiFrameParserRegs = {
     val res = Wire(new SpiFrameParserRegs)
-    res.phase     := Mux(byte_valid, SpiFrameParserPhase.sAddr3, this.phase)
+    val is_reset = (byte_bits === 3.U)
+    res.phase     := Mux(byte_valid, Mux(is_reset, SpiFrameParserPhase.sReset, SpiFrameParserPhase.sAddr3), this.phase)
     res.op        := Mux(byte_valid, byte_bits, this.op)
     res.addr      := Mux(byte_valid, 0.U, this.addr)
     res.len       := Mux(byte_valid, 0.U, this.len)
     res.wr_remain := Mux(byte_valid, 0.U, this.wr_remain)
+    res
+  }
+
+  def onReset(): SpiFrameParserRegs = {
+    val res = Wire(new SpiFrameParserRegs)
+    res.phase     := SpiFrameParserPhase.sReset
+    res.op        := this.op
+    res.addr      := this.addr
+    res.len       := this.len
+    res.wr_remain := 0.U
     res
   }
 
@@ -250,6 +261,8 @@ class Spi2TLULV2_SpiDomain(p: Parameters) extends Module {
     val q_desc_enq    = Decoupled(new DmaDesc)
     val q_wr_data_enq = Decoupled(UInt(8.W))
     val q_rd_data_deq = Flipped(Decoupled(UInt(128.W)))
+
+    val sys_rst_o = Output(Bool())
   })
 
   val c_SpiByteAssembler = RegInit(0.U.asTypeOf(new SpiByteAssemblerRegs))
@@ -291,7 +304,8 @@ class Spi2TLULV2_SpiDomain(p: Parameters) extends Module {
     Seq(
       SpiFrameParserPhase.sWriteData -> (r_SpiFrameParser_byte_valid && !r_SpiFrameParser_is_wr_remain_zero && r_SpiFrameParser_wr_data_ready),
       SpiFrameParserPhase.sSendDesc -> false.B,
-      SpiFrameParserPhase.sWaitEnd  -> false.B
+      SpiFrameParserPhase.sWaitEnd  -> false.B,
+      SpiFrameParserPhase.sReset    -> false.B
     )
   )
 
@@ -346,9 +360,12 @@ class Spi2TLULV2_SpiDomain(p: Parameters) extends Module {
       SpiFrameParserPhase.sSendDesc  -> c_SpiFrameParser.onSendDesc(r_SpiFrameParser_desc_ready),
       SpiFrameParserPhase.sWriteData -> c_SpiFrameParser
         .onWriteData(r_SpiFrameParser_byte_valid, r_SpiFrameParser_wr_data_ready),
-      SpiFrameParserPhase.sWaitEnd -> c_SpiFrameParser.onWaitEnd()
+      SpiFrameParserPhase.sWaitEnd -> c_SpiFrameParser.onWaitEnd(),
+      SpiFrameParserPhase.sReset   -> c_SpiFrameParser.onReset()
     )
   )
+
+  io.sys_rst_o := (c_SpiFrameParser.phase === SpiFrameParserPhase.sReset)
 
   // Rule: SpiBulkDeserializer.tick
   val r_SpiMisoShifter_is_count_zero    = (c_SpiMisoShifter.count === 0.U)
@@ -518,6 +535,7 @@ class Spi2TLULV2(p: Parameters) extends Module {
     val q_miso_pin = Decoupled(UInt(1.W))
     val q_tl_a     = Decoupled(new OpenTitanTileLink.A_Channel(tlul_p))
     val q_tl_d     = Flipped(Decoupled(new OpenTitanTileLink.D_Channel(tlul_p)))
+    val sys_rst_o  = Output(Bool())
   })
 
   // CDC FIFOs
@@ -558,4 +576,10 @@ class Spi2TLULV2(p: Parameters) extends Module {
   u_tlul_domain.io.q_desc_deq <> q_desc_cdc.io.deq
   u_tlul_domain.io.q_wr_data_deq <> q_wr_data_cdc.io.deq
   u_tlul_domain.io.q_rd_data_enq <> q_rd_data_cdc.io.enq
+
+  // Synchronize soft reset to system clock domain
+  val sys_rst_sync = withClockAndReset(clock, reset) {
+    ShiftRegister(u_spi_domain.io.sys_rst_o, 2)
+  }
+  io.sys_rst_o := sys_rst_sync
 }

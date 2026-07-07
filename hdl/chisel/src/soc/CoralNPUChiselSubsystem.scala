@@ -123,74 +123,98 @@ class CoralNPUChiselSubsystem(val hostParams: Seq[bus.TLULParameters], val devic
   }
 
   withClockAndReset(io.clk_i, (!io.rst_ni.asBool).asAsyncReset) {
-    // --- Instantiate Core Chisel Components ---
-    val xbar = Module(new CoralNPUXbar(hostParams, deviceParams, enableTestHarness, itcmSize, dtcmSize))
+    // --- 1. Instantiate spi2tlul first (with hardware reset) ---
+    val spi2tlul_config = SoCChiselConfig(itcmSize, dtcmSize).modules.find(_.name == "spi2tlul").get
+    val spi2tlul = {
+      val p = spi2tlul_config.params.asInstanceOf[Spi2TlulParameters]
+      val spi2tlul_p = new Parameters
+      spi2tlul_p.lsuDataBits = p.lsuDataBits
+      spi2tlul_p.axi2IdBits = 8
+      val m = Module(new Spi2TLUL(spi2tlul_p))
+      m.suggestName("spi2tlul")
+      m
+    }
 
-    // --- Dynamic Module Instantiation ---
+    // --- 2. Define combined reset (active-low for modules expecting rst_ni) ---
+    val soft_reset = spi2tlul.io.sys_rst_o
+    val raw_combined_n = io.rst_ni.asBool && !soft_reset
+    val combined_rst_n = withClockAndReset(io.clk_i, (!raw_combined_n).asAsyncReset) {
+      val r1 = RegInit(false.B)
+      val r2 = RegInit(false.B)
+      r1 := true.B
+      r2 := r1
+      r2
+    }
+
+    // --- 3. Instantiate xbar (with combined reset) ---
+    val xbar = withClockAndReset(io.clk_i, (!combined_rst_n).asAsyncReset) {
+      Module(new CoralNPUXbar(hostParams, deviceParams, enableTestHarness, itcmSize, dtcmSize))
+    }
+
+    // --- 4. Dynamic Module Instantiation helper (with combined reset) ---
     def instantiateModule(config: ChiselModuleConfig): BaseModule = {
-      config.params match {
-        case p: CoreTlulParameters =>
-          val core_p = new Parameters
-          core_p.m = p.memoryRegions
-          core_p.lsuDataBits = p.lsuDataBits
-          core_p.enableRvv = p.enableRvv
-          core_p.enableFetchL0 = p.enableFetchL0
-          core_p.fetchDataBits = p.fetchDataBits
-          core_p.enableFloat = p.enableFloat
-          core_p.itcmSizeKBytes = itcmSize.kBytes
-          core_p.dtcmSizeKBytes = dtcmSize.kBytes
-          Module(new CoreTlul(core_p, config.name))
+      withClockAndReset(io.clk_i, (!combined_rst_n).asAsyncReset) {
+        config.params match {
+          case p: CoreTlulParameters =>
+            val core_p = new Parameters
+            core_p.m = p.memoryRegions
+            core_p.lsuDataBits = p.lsuDataBits
+            core_p.enableRvv = p.enableRvv
+            core_p.enableFetchL0 = p.enableFetchL0
+            core_p.fetchDataBits = p.fetchDataBits
+            core_p.enableFloat = p.enableFloat
+            core_p.itcmSizeKBytes = itcmSize.kBytes
+            core_p.dtcmSizeKBytes = dtcmSize.kBytes
+            Module(new CoreTlul(core_p, config.name))
 
-        case p: Spi2TlulParameters =>
-          val spi2tlul_p = new Parameters
-          spi2tlul_p.lsuDataBits = p.lsuDataBits
-          spi2tlul_p.axi2IdBits = 8
-          Module(new Spi2TLUL(spi2tlul_p))
+          case p: Spi2TlulParameters => null
 
-        case p: SpiMasterParameters =>
-          val spi_p = new Parameters
-          spi_p.lsuDataBits = p.lsuDataBits
-          spi_p.axi2IdBits = 10
-          Module(new SpiMaster(spi_p))
+          case p: SpiMasterParameters =>
+            val spi_p = new Parameters
+            spi_p.lsuDataBits = p.lsuDataBits
+            spi_p.axi2IdBits = 10
+            Module(new SpiMaster(spi_p))
 
-        case p: GPIOModuleParameters =>
-          val gpio_p = new Parameters
-          gpio_p.lsuDataBits = 32
-          gpio_p.axi2IdBits = 10
-          val gp = bus.GPIOParameters(width = p.width)
-          Module(new bus.GPIO(gpio_p, gp))
+          case p: GPIOModuleParameters =>
+            val gpio_p = new Parameters
+            gpio_p.lsuDataBits = 32
+            gpio_p.axi2IdBits = 10
+            val gp = bus.GPIOParameters(width = p.width)
+            Module(new bus.GPIO(gpio_p, gp))
 
-        case p: DmaParameters =>
-          val host_p = new Parameters
-          host_p.lsuDataBits = p.hostDataBits
-          val device_p = new Parameters
-          device_p.lsuDataBits = p.deviceDataBits
-          device_p.axi2IdBits = 10
-          Module(new bus.DmaEngine(host_p, device_p))
+          case p: DmaParameters =>
+            val host_p = new Parameters
+            host_p.lsuDataBits = p.hostDataBits
+            val device_p = new Parameters
+            device_p.lsuDataBits = p.deviceDataBits
+            device_p.axi2IdBits = 10
+            Module(new bus.DmaEngine(host_p, device_p))
 
-        case ClintParameters =>
-          val clint_p = new Parameters
-          clint_p.lsuDataBits = 32
-          clint_p.axi2IdBits = 10
-          Module(new bus.Clint(clint_p))
+          case ClintParameters =>
+            val clint_p = new Parameters
+            clint_p.lsuDataBits = 32
+            clint_p.axi2IdBits = 10
+            Module(new bus.Clint(clint_p))
 
-        case p: PlicParameters =>
-          val plic_p = new Parameters
-          plic_p.lsuDataBits = 32
-          plic_p.axi2IdBits = 10
-          Module(new bus.Plic(plic_p, p.numInterrupts, p.priorityWidth))
+          case p: PlicParameters =>
+            val plic_p = new Parameters
+            plic_p.lsuDataBits = 32
+            plic_p.axi2IdBits = 10
+            Module(new bus.Plic(plic_p, p.numInterrupts, p.priorityWidth))
 
-        case p: TlulSramParameters =>
-          val sram_p = new Parameters
-          sram_p.lsuDataBits = 128
-          sram_p.axi2IdBits = 8
-          Module(new TlulSram(sram_p, p.sramSizeBytes, p.globalBaseAddr))
+          case p: TlulSramParameters =>
+            val sram_p = new Parameters
+            sram_p.lsuDataBits = 128
+            sram_p.axi2IdBits = 8
+            Module(new TlulSram(sram_p, p.sramSizeBytes, p.globalBaseAddr))
 
-        case p: IspParameters => null // Handled externally
+          case p: IspParameters => null // Handled externally
+        }
       }
     }
 
-    val instantiatedModules = SoCChiselConfig(itcmSize, dtcmSize).modules.flatMap {
+    // --- 5. Instantiate other modules ---
+    val otherModules = SoCChiselConfig(itcmSize, dtcmSize).modules.filter(_.name != "spi2tlul").flatMap {
       config =>
       val m = instantiateModule(config)
       if (m != null) {
@@ -200,6 +224,8 @@ class CoralNPUChiselSubsystem(val hostParams: Seq[bus.TLULParameters], val devic
         None
       }
     }.toMap
+
+    val instantiatedModules = otherModules + ("spi2tlul" -> spi2tlul)
 
     // --- Dynamic Wiring ---
     // Note: SpeciallyHandledHosts modified to matches the XBAR port names to accomodate multiple hosts in one IP
@@ -218,8 +244,12 @@ class CoralNPUChiselSubsystem(val hostParams: Seq[bus.TLULParameters], val devic
       modulePorts.get(s"$name.io.clk").foreach(_ := io.clk_i)
       modulePorts.get(s"$name.io.clk_i").foreach(_ := io.clk_i)
       modulePorts.get(s"$name.io.clock").foreach(_ := io.clk_i)
-      modulePorts.get(s"$name.io.rst_ni").foreach(_ := io.rst_ni)
-      modulePorts.get(s"$name.io.reset").foreach(_ := (!io.rst_ni.asBool).asAsyncReset)
+
+      val m_rst_ni = if (name == "spi2tlul") io.rst_ni else combined_rst_n.asAsyncReset
+      val m_reset  = if (name == "spi2tlul") (!io.rst_ni.asBool).asAsyncReset else (!combined_rst_n).asAsyncReset
+
+      modulePorts.get(s"$name.io.rst_ni").foreach(_ := m_rst_ni)
+      modulePorts.get(s"$name.io.reset").foreach(_ := m_reset)
     }
 
     // Connect all modules based on the configuration.

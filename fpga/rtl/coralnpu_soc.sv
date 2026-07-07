@@ -201,7 +201,7 @@ input clk_i,
       .CsrBaseAddr(CsrBaseAddr)
     ) i_autoboot (
       .clk_i(clk_i),
-      .rst_ni(rst_ni),
+      .rst_ni(rst_main_nqq),
       .tl_o(tl_autoboot_h2d),
       .tl_i(tl_autoboot_d2h)
     );
@@ -476,6 +476,17 @@ input clk_i,
     .disable_isp_i  (1'b0),
     .scanmode_i     (1'b0)
   );
+
+  logic rst_main_nq, rst_main_nqq;
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      rst_main_nq  <= 1'b0;
+      rst_main_nqq <= 1'b0;
+    end else begin
+      rst_main_nq  <= 1'b1;
+      rst_main_nqq <= rst_main_nq;
+    end
+  end
 
   logic rst_isp_nq, rst_isp_nqq;
   always_ff @(posedge clk_isp_i or negedge rst_ni) begin
