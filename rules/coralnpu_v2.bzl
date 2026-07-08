@@ -264,7 +264,7 @@ def coralnpu_v2_binary(
     else:
         deps.append("//toolchain/crt")
 
-# See cache_size_param/hw/coralnpu/toolchain/BUILD.bazel for default linker script.
+    # See cache_size_param/hw/coralnpu/toolchain/BUILD.bazel for default linker script.
     if linker_script == None:
         _DEFAULT_ITCM_SIZE_KBYTES = 8
         _DEFAULT_DTCM_SIZE_KBYTES = 32
@@ -279,7 +279,12 @@ def coralnpu_v2_binary(
            heap_size != _DEFAULT_HEAP_SIZE or \
            heap_location != _DEFAULT_HEAP_LOCATION:
             linker_script_suffix = "_ITCM%dKB_DTCM%dKB_STACK%d_HEAP%s%s" % (
-                itcm_size_kbytes, dtcm_size_kbytes, stack_size_bytes, heap_size, heap_location)
+                itcm_size_kbytes,
+                dtcm_size_kbytes,
+                stack_size_bytes,
+                heap_size,
+                heap_location,
+            )
 
         linker_script_name = name + linker_script_suffix + "_linker_script"
         linker_script_output_file = name + linker_script_suffix + ".ld"

@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-package(default_visibility = ["//visibility:public"])
-
 load("@coralnpu_hw//third_party/python:requirements.bzl", "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+
+package(default_visibility = ["//visibility:public"])
 
 py_binary(
     name = "scm_info",

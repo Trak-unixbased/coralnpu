@@ -33,8 +33,8 @@ chisel_library(
         "Axi2TLUL.scala",
         "Clint.scala",
         "DmaEngine.scala",
-        "Plic.scala",
         "GPIO.scala",
+        "Plic.scala",
         "SecdedEncoderTestbench.scala",
         "Spi2TLUL.scala",
         "Spi2TLULV2.scala",
@@ -127,7 +127,6 @@ chisel_cc_library(
     module_name = "TlulToSram",
 )
 
-
 verilator_cocotb_model(
     name = "tlul_socket_m1_2_128_model",
     cflags = VERILATOR_BUILD_ARGS,
@@ -175,7 +174,6 @@ verilator_cocotb_model(
     trace = True,
     verilog_source = "//hdl/chisel/src/bus:TlulToSram.sv",
 )
-
 
 chisel_cc_library(
     name = "tlul_integrity_testbench_cc_library",

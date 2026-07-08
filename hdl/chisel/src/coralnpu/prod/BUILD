@@ -51,7 +51,7 @@ chisel_cc_library(
         "--lsuDataBits=128",
         "--enableFloat=True",
         "--enableZfbfmin=True",
-        "--moduleName=CoreMini", # Generates CoreMiniAxi module
+        "--moduleName=CoreMini",  # Generates CoreMiniAxi module
         "--useAxi",
         # --enableVerification=False is the default in Chisel
     ],
@@ -72,7 +72,7 @@ chisel_cc_library(
         "RvvCoreMiniAxi.zip",
     ],
     gen_flags = [
-        "--moduleName=RvvCoreMini", # Generates RvvCoreMiniAxi module
+        "--moduleName=RvvCoreMini",  # Generates RvvCoreMiniAxi module
     ] + RVV_CORE_MINI_AXI_COMMON_GEN_FLAGS,
     module_name = "RvvCoreMiniAxi",
     verilog_file_path = "RvvCoreMiniAxi.sv",

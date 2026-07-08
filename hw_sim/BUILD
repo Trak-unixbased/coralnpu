@@ -69,8 +69,8 @@ cc_library(
     srcs = ["core_mini_axi_simulator.cc"],
     linkstatic = True,
     deps = [
-        ":core_mini_axi_wrapper",
         ":coralnpu_simulator_headers",
+        ":core_mini_axi_wrapper",
     ],
     alwayslink = True,
 )
@@ -81,8 +81,8 @@ cc_library(
     copts = ["-DENABLE_RVV"],
     linkstatic = True,
     deps = [
-        ":core_mini_axi_wrapper",
         ":coralnpu_simulator_headers",
+        ":core_mini_axi_wrapper",
     ],
     alwayslink = True,
 )

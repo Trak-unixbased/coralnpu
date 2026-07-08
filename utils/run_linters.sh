@@ -16,7 +16,7 @@ BASE_BRANCH=${BASE_BRANCH:-""}
 # Define linters: [name]="command and flags"
 declare -A LINTER_COMMANDS=(
     ["yapf"]="true" #  "yapf3 --diff"
-    ["buildifier"]="true" #  "buildifier -mode=check"
+    ["buildifier"]="buildifier -mode=check"
     ["verible-verilog-lint"]="true" #  "verible-verilog-lint"
     ["verible-verilog-format"]="true" #  "verible-verilog-format --verify"
     # ["clang-tidy"]="clang-tidy" # Pending compilation database

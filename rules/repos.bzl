@@ -349,4 +349,3 @@ def mpact_repos():
         strip_prefix = "coralnpu-mpact-e2a26e6d983f13d4c10875e4e5878a6171c04a06",
         workspace_file = "@coralnpu_hw//third_party/coralnpu_mpact:WORKSPACE",
     )
-

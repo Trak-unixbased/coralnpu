@@ -606,7 +606,6 @@ coralnpu_v2_binary(
     ],
 )
 
-
 # This test is used for baseline vector power analysis.
 coralnpu_v2_binary(
     name = "nop_test",
@@ -718,17 +717,16 @@ RVV_ML_OPS_TESTCASES = [
 ]
 # END_TESTCASES_FOR_rvv_ml_ops_cocotb_test
 
-
 py_binary(
     name = "dump_gemma_tensors",
     srcs = ["dump_gemma_tensors.py"],
+    tags = ["manual"],
     deps = [
         gemma_requirement("torch"),
         gemma_requirement("transformers"),
         gemma_requirement("accelerate"),
         gemma_requirement("numpy"),
     ],
-    tags = ["manual"],
 )
 
 genrule(
@@ -744,8 +742,6 @@ genrule(
     tags = ["manual"],
     tools = [":dump_gemma_tensors"],
 )
-
-
 
 cocotb_test_suite(
     name = "rvv_ml_ops_cocotb_test",

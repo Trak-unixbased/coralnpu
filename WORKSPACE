@@ -15,18 +15,17 @@
 workspace(name = "coralnpu_hw")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-
+load("//rules:host_cpus.bzl", "host_cpus")
 load(
     "//rules:repos.bzl",
-    "cvfpu_repos",
-    "fpga_repos",
     "coralnpu_repos",
     "coralnpu_repos2",
+    "cvfpu_repos",
+    "fpga_repos",
+    "mpact_repos",
     "rvvi_repos",
     "tflite_repos",
-    "mpact_repos",
 )
-load("//rules:host_cpus.bzl", "host_cpus")
 
 host_cpus(name = "coralnpu_host_cpus")
 
@@ -63,6 +62,7 @@ load("@bazel_features//:deps.bzl", "bazel_features_deps")
 bazel_features_deps()
 
 load("@rules_java//java:rules_java_deps.bzl", "compatibility_proxy_repo")
+
 compatibility_proxy_repo()
 
 load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
@@ -70,18 +70,18 @@ load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
 protobuf_deps()
 
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
+
 rules_pkg_dependencies()
 
-load("@rules_python//python:repositories.bzl", "py_repositories")
+load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_toolchains")
 
 py_repositories()
-
-load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
     name = "python311",
     python_version = "3.11.6",
 )
+
 coralnpu_repos2()
 
 # Scala setup
@@ -208,7 +208,6 @@ load("@gemma_deps//:requirements.bzl", gemma_install_deps = "install_deps")
 
 gemma_install_deps()
 
-
 load("@rules_cc//cc:extensions.bzl", cc_compatibility_proxy_repo = "compatibility_proxy_repo")
 
 cc_compatibility_proxy_repo()
@@ -216,12 +215,15 @@ cc_compatibility_proxy_repo()
 mpact_repos()
 
 load("@com_google_mpact-riscv//:repos.bzl", "mpact_riscv_repos")
+
 mpact_riscv_repos()
 
 load("@com_google_mpact-riscv//:dep_repos.bzl", "mpact_riscv_dep_repos")
+
 mpact_riscv_dep_repos()
 
 load("@com_google_mpact-riscv//:deps.bzl", "mpact_riscv_deps")
+
 mpact_riscv_deps()
 
 load("@coralnpu_hw//rules:check_folder.bzl", "check_folder")

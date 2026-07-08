@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//rules:coco_tb.bzl", "cocotb_test_suite")
 load("//rules:coralnpu_v2.bzl", "coralnpu_v2_binary")
 load("//rules:utils.bzl", "template_rule")
-load("//rules:coco_tb.bzl", "cocotb_test_suite")
 load(
     "//tests/cocotb:build_defs.bzl",
     "VCS_BUILD_ARGS",
@@ -29,33 +29,48 @@ template_rule(
     coralnpu_v2_binary,
     {
         "rvv_rms_norm": {
-            "srcs": ["rms_norm_runner.cc", "rvv_rms_norm.cc"],
+            "srcs": [
+                "rms_norm_runner.cc",
+                "rvv_rms_norm.cc",
+            ],
             "hdrs": ["//sw/utils:utils.h"],
             "itcm_size_kbytes": 1024,
             "dtcm_size_kbytes": 1024,
         },
         "rvv_flashattention_test": {
-            "srcs": ["rvv_flashattention_runner.cc", "rvv_flashattention_kernel.cc"],
+            "srcs": [
+                "rvv_flashattention_runner.cc",
+                "rvv_flashattention_kernel.cc",
+            ],
             "hdrs": ["//sw/utils:utils.h"],
             "itcm_size_kbytes": 1024,
             "dtcm_size_kbytes": 1024,
         },
         "rvv_matmul": {
-            "srcs": ["rvv_matmul_runner.cc", "rvv_matmul.cc"],
+            "srcs": [
+                "rvv_matmul_runner.cc",
+                "rvv_matmul.cc",
+            ],
             "hdrs": ["//sw/utils:utils.h"],
             "itcm_size_kbytes": 1024,
             "dtcm_size_kbytes": 1024,
             "enable_vmem": False,
         },
         "rvv_residual_add": {
-            "srcs": ["rvv_residual_add_runner.cc", "rvv_residual_add.cc"],
+            "srcs": [
+                "rvv_residual_add_runner.cc",
+                "rvv_residual_add.cc",
+            ],
             "hdrs": ["//sw/utils:utils.h"],
             "itcm_size_kbytes": 1024,
             "dtcm_size_kbytes": 1024,
             "enable_vmem": False,
         },
         "rvv_tanh_gelu_mul": {
-            "srcs": ["rvv_tanh_gelu_mul_runner.cc", "rvv_tanh_gelu_mul.cc"],
+            "srcs": [
+                "rvv_tanh_gelu_mul_runner.cc",
+                "rvv_tanh_gelu_mul.cc",
+            ],
             "hdrs": ["//sw/utils:utils.h"],
             "itcm_size_kbytes": 1024,
             "dtcm_size_kbytes": 1024,

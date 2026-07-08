@@ -347,4 +347,3 @@ cocotb_test_suite(
     },
     verilator_model = "//tests/cocotb:rvv_core_mini_highmem_axi_model",
 )
-
