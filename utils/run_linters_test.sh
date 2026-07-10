@@ -229,6 +229,24 @@ else
     FAILED_TESTS=$((FAILED_TESTS + 1))
 fi
 
+# 13. --fix flag (Target file, buildifier)
+setup_repo
+echo "# build file" > BUILD
+run_test "Fix mode buildifier" "" "--fix BUILD" "/dev/null" 0 "MOCK: buildifier running on -mode=fix.*BUILD" || FAILED_TESTS=$((FAILED_TESTS + 1))
+
+# 14. --fix flag (Local Staged Changes, diff mode git-clang-format-19)
+setup_repo
+echo "int main() {}" > test.cc
+git add test.cc
+run_test "Fix mode diff git-clang-format" "" "--fix" "/dev/null" 0 "MOCK: git-clang-format-19 running on origin/main.*test.cc" || FAILED_TESTS=$((FAILED_TESTS + 1))
+
+# 15. --fix --all flags (clang-format -i)
+setup_repo
+echo "int main() {}" > test.cc
+git add test.cc
+git commit -q -m "add test.cc"
+run_test "Fix mode --all clang-format" "" "--fix --all" "/dev/null" 0 "MOCK: clang-format running on -i.*test.cc" || FAILED_TESTS=$((FAILED_TESTS + 1))
+
 # --- Summary ---
 
 echo ""

@@ -26,11 +26,28 @@ declare -A LINTER_COMMANDS=(
     ["markdownlint"]="true" #  "mdl"
 )
 
+# Define fix mode commands: [name]="command and flags"
+declare -A LINTER_FIX_COMMANDS=(
+    ["yapf"]="true" #  "yapf3 -i"
+    ["buildifier"]="buildifier -mode=fix"
+    ["verible-verilog-format"]="true" #  "verible-verilog-format --inplace"
+    # ["clang-tidy"]="clang-tidy -fix" # Pending compilation database
+    ["clang-format"]="clang-format -i"
+    ["scalafmt"]="true" #  "scalafmt --config .scalafmt.conf"
+)
+
 # Define diff-aware linters: [name]="command and flags"
 # Use %BASE% as placeholder for the base commit/branch
 declare -A LINTER_DIFF_COMMANDS=(
     ["clang-format"]="git-clang-format-19 --diff %BASE%"
     # ["clang-tidy"]="git diff -U0 %BASE% -- | clang-tidy-diff.py -p1"
+)
+
+# Define diff-aware fix commands: [name]="command and flags"
+# Use %BASE% as placeholder for the base commit/branch
+declare -A LINTER_DIFF_FIX_COMMANDS=(
+    ["clang-format"]="git-clang-format-19 %BASE%"
+    # ["clang-tidy"]="git diff -U0 %BASE% -- | clang-tidy-diff.py -fix -p1"
 )
 
 
@@ -146,13 +163,51 @@ detect_base_branch() {
     echo "HEAD"
 }
 
+# --- Argument Parsing ---
+FIX_MODE=false
+ALL_MODE=false
+TARGET_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --fix)
+            FIX_MODE=true
+            shift
+            ;;
+        --all)
+            ALL_MODE=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--fix] [--all] [file/dir ...]"
+            echo ""
+            echo "By default (when no targets or --all are specified), this script lints all local"
+            echo "changes (staged and unstaged) relative to the base branch (${BASE_BRANCH:-auto-detected})."
+            echo ""
+            echo "Options:"
+            echo "  --fix       Fix formatting and lint issues where supported"
+            echo "  --all       Lint all tracked files across the repository"
+            echo "  -h, --help  Show this help message and exit"
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            exit 2
+            ;;
+        *)
+            TARGET_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
 # --- Environment Detection & File Gathering ---
 DETECTED_BASE=$(detect_base_branch)
 IS_DIFF_LINT=true
 LINT_BASE="${DETECTED_BASE}"
 
 # 1. Manual: Check for explicit --all flag
-if [[ "$*" == *"--all"* ]]; then
+if [[ "${ALL_MODE}" == "true" ]]; then
     log "Manual: Linting all tracked files (--all)"
     IS_DIFF_LINT=false
     while IFS= read -r -d '' file; do
@@ -195,10 +250,10 @@ elif [[ ! -t 0 ]]; then
         fi
         gather_diff "${RANGE}"
     else
-        if [[ "$#" -gt 0 && "$1" != -* ]]; then
+        if [[ ${#TARGET_ARGS[@]} -gt 0 ]]; then
             log "Manual: Linting specific targets (Non-TTY)"
             IS_DIFF_LINT=false
-            gather_targets "$@"
+            gather_targets "${TARGET_ARGS[@]}"
         else
             log "Manual: Local Changes Detected (Non-TTY)"
             gather_diff "${DETECTED_BASE}...HEAD"
@@ -206,11 +261,11 @@ elif [[ ! -t 0 ]]; then
         fi
     fi
 
-# 3. Manual: Check for specific file/directory arguments
-elif [[ "$#" -gt 0 && "$1" != -* ]]; then
+# 5. Manual: Check for specific file/directory arguments
+elif [[ ${#TARGET_ARGS[@]} -gt 0 ]]; then
     log "Manual: Linting specific targets"
     IS_DIFF_LINT=false
-    gather_targets "$@"
+    gather_targets "${TARGET_ARGS[@]}"
 
 # 6. Default: Local changes
 else
@@ -245,11 +300,24 @@ for linter_file in "${LINTER_FILES_SORTED[@]}"; do
     echo "🔍 Running ${linter} on ${num_files} file(s)..."
 
     cmd_str=""
-    if [[ "${IS_DIFF_LINT}" == "true" ]] && [[ -n "${LINTER_DIFF_COMMANDS[${linter}]:-}" ]]; then
+    if [[ "${FIX_MODE}" == "true" ]]; then
+        if [[ "${IS_DIFF_LINT}" == "true" ]] && [[ -n "${LINTER_DIFF_FIX_COMMANDS[${linter}]:-}" ]]; then
+            cmd_str="${LINTER_DIFF_FIX_COMMANDS[${linter}]}"
+        elif [[ -n "${LINTER_FIX_COMMANDS[${linter}]:-}" ]]; then
+            cmd_str="${LINTER_FIX_COMMANDS[${linter}]}"
+        fi
+    fi
+
+    if [[ -z "${cmd_str}" ]] && [[ "${IS_DIFF_LINT}" == "true" ]] && [[ -n "${LINTER_DIFF_COMMANDS[${linter}]:-}" ]]; then
         cmd_str="${LINTER_DIFF_COMMANDS[${linter}]}"
-        cmd_str="${cmd_str//%BASE%/${LINT_BASE}}"
-    else
+    fi
+
+    if [[ -z "${cmd_str}" ]]; then
         cmd_str="${LINTER_COMMANDS[${linter}]}"
+    fi
+
+    if [[ -n "${cmd_str}" ]]; then
+        cmd_str="${cmd_str//%BASE%/${LINT_BASE}}"
     fi
 
     if [[ "${cmd_str}" == *"|"* ]]; then
