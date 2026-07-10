@@ -23,7 +23,7 @@ declare -A LINTER_COMMANDS=(
     ["clang-format"]="clang-format --dry-run --Werror"
     ["scalafmt"]="true" #  "scalafmt --config .scalafmt.conf --test --list"
     ["shellcheck"]="shellcheck -x"
-    ["markdownlint"]="true" #  "mdl"
+    ["markdownlint"]="mdl --no-verbose"
 )
 
 # Define fix mode commands: [name]="command and flags"
