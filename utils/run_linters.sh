@@ -18,7 +18,7 @@ declare -A LINTER_COMMANDS=(
     ["yapf"]="yapf3 --diff"
     ["buildifier"]="buildifier -mode=check"
     ["verible-verilog-lint"]="true" #  "verible-verilog-lint"
-    ["verible-verilog-format"]="true" #  "verible-verilog-format --verify"
+    ["verible-verilog-format"]="verible-verilog-format --verify --inplace"
     # ["clang-tidy"]="clang-tidy" # Pending compilation database
     ["clang-format"]="clang-format --dry-run --Werror"
     ["scalafmt"]="scalafmt --config .scalafmt --test"
@@ -30,7 +30,7 @@ declare -A LINTER_COMMANDS=(
 declare -A LINTER_FIX_COMMANDS=(
     ["yapf"]="yapf3 -i"
     ["buildifier"]="buildifier -mode=fix"
-    ["verible-verilog-format"]="true" #  "verible-verilog-format --inplace"
+    ["verible-verilog-format"]="verible-verilog-format --inplace"
     # ["clang-tidy"]="clang-tidy -fix" # Pending compilation database
     ["clang-format"]="clang-format -i"
     ["scalafmt"]="scalafmt --config .scalafmt"
