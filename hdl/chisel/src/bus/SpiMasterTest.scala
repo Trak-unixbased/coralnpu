@@ -25,7 +25,7 @@ import coralnpu.Parameters
   * asynchronous clock domain crossing.
   */
 class SpiMasterSpec extends AnyFreeSpec with ChiselSim with TLULTestUtils {
-  val p = new Parameters
+  val p      = new Parameters
   val tlul_p = p.toTLUL()
 
   "SpiMaster Register Access" in {

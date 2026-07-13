@@ -16,7 +16,7 @@ package bus
 
 import chisel3._
 import chisel3.util._
-import common.{MakeValid, MakeInvalid, MuBi4}
+import common.{MakeInvalid, MakeValid, MuBi4}
 
 class DmaEngine(hostParams: TLULParameters, deviceParams: TLULParameters) extends Module {
   val hostTlulP   = hostParams
@@ -50,7 +50,7 @@ class DmaEngine(hostParams: TLULParameters, deviceParams: TLULParameters) extend
   // --- FSM States ---
   object State extends ChiselEnum {
     val sIdle, sFetchDesc0, sFetchDesc0Resp, sFetchDesc1, sFetchDesc1Resp, sPollCheck, sPollReq,
-        sPollResp, sXferReadReq, sXferReadResp, sXferWriteReq, sXferWriteResp, sDone = Value
+      sPollResp, sXferReadReq, sXferReadResp, sXferWriteReq, sXferWriteResp, sDone = Value
   }
   import State._
 

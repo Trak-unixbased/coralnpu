@@ -17,7 +17,6 @@ package bus
 import chisel3._
 import common.MuBi4
 
-
 class Spi2TLUL(p: TLULParameters) extends Module {
   val tlul_p = p
   val io     = IO(new Bundle {
@@ -27,7 +26,7 @@ class Spi2TLUL(p: TLULParameters) extends Module {
       val mosi = Input(Bool())
       val miso = Output(Bool())
     }
-    val tl = new OpenTitanTileLink.Host2Device(p)
+    val tl        = new OpenTitanTileLink.Host2Device(p)
     val sys_rst_o = Output(Bool())
   })
 

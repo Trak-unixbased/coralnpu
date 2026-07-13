@@ -17,18 +17,17 @@ package bus
 import chisel3._
 import chisel3.util._
 
-
 object TLULOpcodesA extends ChiselEnum {
-  val PutFullData = Value(0.U(3.W))
+  val PutFullData    = Value(0.U(3.W))
   val PutPartialData = Value(1.U(3.W))
-  val Get = Value(4.U(3.W))
-  val End = Value(7.U(3.W))
+  val Get            = Value(4.U(3.W))
+  val End            = Value(7.U(3.W))
 }
 
 object TLULOpcodesD extends ChiselEnum {
-  val AccessAck = Value(0.U(3.W))
+  val AccessAck     = Value(0.U(3.W))
   val AccessAckData = Value(1.U(3.W))
-  val End = Value(7.U(3.W))
+  val End           = Value(7.U(3.W))
 }
 
 trait TLUL_A_User_InstrType {
@@ -36,57 +35,77 @@ trait TLUL_A_User_InstrType {
 }
 
 class OpenTitanTileLink_A_User extends Bundle with TLUL_A_User_InstrType {
-  val rsvd = UInt(5.W)
+  val rsvd       = UInt(5.W)
   val instr_type = UInt(4.W) // mubi4_t
-  val cmd_intg = UInt(7.W)
-  val data_intg = UInt(7.W)
+  val cmd_intg   = UInt(7.W)
+  val data_intg  = UInt(7.W)
 }
 
 class OpenTitanTileLink_D_User extends Bundle {
-  val rsp_intg = UInt(7.W)
+  val rsp_intg  = UInt(7.W)
   val data_intg = UInt(7.W)
 }
 
 class NoUser extends Bundle {}
 
 class TileLink_A_ChannelBase[T <: Data](p: TLULParameters, val userGen: () => T) extends Bundle {
-  val opcode = UInt(3.W)
-  val param = UInt(3.W)
-  val size = UInt(p.z.W)
-  val source = UInt(p.o.W)
+  val opcode  = UInt(3.W)
+  val param   = UInt(3.W)
+  val size    = UInt(p.z.W)
+  val source  = UInt(p.o.W)
   val address = UInt(p.a.W)
-  val mask = UInt(p.w.W)
-  val data = UInt((8 * p.w).W)
-  val user = userGen()
+  val mask    = UInt(p.w.W)
+  val data    = UInt((8 * p.w).W)
+  val user    = userGen()
 }
 
 class TileLink_D_ChannelBase[T <: Data](p: TLULParameters, val userGen: () => T) extends Bundle {
   val opcode = UInt(3.W)
-  val param = UInt(3.W)
-  val size = UInt(p.z.W)
+  val param  = UInt(3.W)
+  val size   = UInt(p.z.W)
   val source = UInt(p.o.W)
-  val sink = UInt(p.i.W)
-  val data = UInt((8 * p.w).W)
-  val user = userGen()
-  val error = Bool()
+  val sink   = UInt(p.i.W)
+  val data   = UInt((8 * p.w).W)
+  val user   = userGen()
+  val error  = Bool()
 }
 
 class TileLink_A_Channel(p: TLULParameters) extends TileLink_A_ChannelBase(p, () => new NoUser) {}
 class TileLink_D_Channel(p: TLULParameters) extends TileLink_D_ChannelBase(p, () => new NoUser) {}
 
-class TLULHost2Device[A_USER <: Data, D_USER <: Data](p: TLULParameters, userAGen: () => A_USER, userDGen: () => D_USER) extends Bundle {
+class TLULHost2Device[A_USER <: Data, D_USER <: Data](
+  p: TLULParameters,
+  userAGen: () => A_USER,
+  userDGen: () => D_USER
+) extends Bundle {
   val a = Decoupled(new TileLink_A_ChannelBase(p, userAGen))
   val d = Flipped(Decoupled(new TileLink_D_ChannelBase(p, userDGen)))
 }
 
-class TLULDevice2Host[A_USER <: Data, D_USER <: Data](p: TLULParameters, userAGen: () => A_USER, userDGen: () => D_USER) extends Bundle {
+class TLULDevice2Host[A_USER <: Data, D_USER <: Data](
+  p: TLULParameters,
+  userAGen: () => A_USER,
+  userDGen: () => D_USER
+) extends Bundle {
   val a = Flipped(Decoupled(new TileLink_A_ChannelBase(p, userAGen)))
   val d = Decoupled(new TileLink_D_ChannelBase(p, userDGen))
 }
 
 object OpenTitanTileLink {
-  class A_Channel(p: TLULParameters) extends TileLink_A_ChannelBase(p, () => new OpenTitanTileLink_A_User) {}
-  class D_Channel(p: TLULParameters) extends TileLink_D_ChannelBase(p, () => new OpenTitanTileLink_D_User) {}
-  class Host2Device(p: TLULParameters) extends TLULHost2Device(p, () => new OpenTitanTileLink_A_User, () => new OpenTitanTileLink_D_User) {}
-  class Device2Host(p: TLULParameters) extends TLULDevice2Host(p, () => new OpenTitanTileLink_A_User, () => new OpenTitanTileLink_D_User) {}
+  class A_Channel(p: TLULParameters)
+      extends TileLink_A_ChannelBase(p, () => new OpenTitanTileLink_A_User) {}
+  class D_Channel(p: TLULParameters)
+      extends TileLink_D_ChannelBase(p, () => new OpenTitanTileLink_D_User) {}
+  class Host2Device(p: TLULParameters)
+      extends TLULHost2Device(
+        p,
+        () => new OpenTitanTileLink_A_User,
+        () => new OpenTitanTileLink_D_User
+      ) {}
+  class Device2Host(p: TLULParameters)
+      extends TLULDevice2Host(
+        p,
+        () => new OpenTitanTileLink_A_User,
+        () => new OpenTitanTileLink_D_User
+      ) {}
 }

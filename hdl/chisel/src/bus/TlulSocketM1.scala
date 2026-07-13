@@ -3,24 +3,21 @@ package bus
 import chisel3._
 import chisel3.util._
 
-
-
-
 class TlulSocketM1(
-    p: TLULParameters,
-    M: Int = 4,
-    HReqPass: Seq[Boolean] = Nil,
-    HRspPass: Seq[Boolean] = Nil,
-    HReqDepth: Seq[Int] = Nil,
-    HRspDepth: Seq[Int] = Nil,
-    DReqPass: Boolean = true,
-    DRspPass: Boolean = true,
-    DReqDepth: Int = 1,
-    DRspDepth: Int = 1,
-    moduleName: String = "TlulSocketM1"
+  p: TLULParameters,
+  M: Int = 4,
+  HReqPass: Seq[Boolean] = Nil,
+  HRspPass: Seq[Boolean] = Nil,
+  HReqDepth: Seq[Int] = Nil,
+  HRspDepth: Seq[Int] = Nil,
+  DReqPass: Boolean = true,
+  DRspPass: Boolean = true,
+  DReqDepth: Int = 1,
+  DRspDepth: Int = 1,
+  moduleName: String = "TlulSocketM1"
 ) extends Module {
   override val desiredName = moduleName
-  val StIdW = log2Ceil(M)
+  val StIdW                = log2Ceil(M)
 
   // 1. Define device-side parameters (augmented source ID width)
   val p_d = new TLULParameters(
@@ -38,9 +35,9 @@ class TlulSocketM1(
   // Augment source ID with host index combinationally before arbitration
   val hreq_a = Wire(Vec(M, Decoupled(new OpenTitanTileLink.A_Channel(p_d))))
   for (i <- 0 until M) {
-    hreq_a(i).valid := io.tl_h(i).a.valid
-    io.tl_h(i).a.ready := hreq_a(i).ready
-    hreq_a(i).bits := io.tl_h(i).a.bits
+    hreq_a(i).valid       := io.tl_h(i).a.valid
+    io.tl_h(i).a.ready    := hreq_a(i).ready
+    hreq_a(i).bits        := io.tl_h(i).a.bits
     hreq_a(i).bits.source := Cat(io.tl_h(i).a.bits.source, i.U(StIdW.W))
   }
 
@@ -55,13 +52,13 @@ class TlulSocketM1(
 
   // 3. Combinational Response Path (D-Channel)
   // Response steering based purely on the returning source ID
-  val rsp_valid = io.tl_d.d.valid
-  val rsp_bits = io.tl_d.d.bits
+  val rsp_valid  = io.tl_d.d.valid
+  val rsp_bits   = io.tl_d.d.bits
   val host_index = rsp_bits.source(StIdW - 1, 0)
 
   for (i <- 0 until M) {
-    io.tl_h(i).d.valid := rsp_valid && (host_index === i.U)
-    io.tl_h(i).d.bits := rsp_bits
+    io.tl_h(i).d.valid       := rsp_valid && (host_index === i.U)
+    io.tl_h(i).d.bits        := rsp_bits
     io.tl_h(i).d.bits.source := rsp_bits.source >> StIdW
   }
 

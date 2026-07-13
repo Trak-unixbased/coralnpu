@@ -106,7 +106,7 @@ class SpiMasterCtrl(p: TLULParameters) extends Module {
   val manual_cs     = reg_csmode(0)
   val manual_cs_val = !reg_csid(0) // CS0 selected if bit 0 set
 
-  val phase = RegInit(0.U(1.W)) // Half-cycle phase indicator
+  val phase        = RegInit(0.U(1.W)) // Half-cycle phase indicator
   val sample_count = RegInit(0.U(4.W)) // Number of bits sampled
 
   // Reset and Enable management

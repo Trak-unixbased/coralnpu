@@ -23,12 +23,12 @@ class CircularBufferMulti[T <: Data](t: T, n: Int, capacity: Int) extends Module
   assert(isPow2(capacity))
   val io = IO(new Bundle {
     val enqValid = Input(UInt(log2Ceil(n + 1).W))
-    val enqData = Input(Vec(n, t))
+    val enqData  = Input(Vec(n, t))
 
     val nEnqueued = Output(UInt(log2Ceil(capacity + 1).W))
-    val nSpace = Output(UInt(log2Ceil(capacity + 1).W))
+    val nSpace    = Output(UInt(log2Ceil(capacity + 1).W))
 
-    val dataOut = Output(Vec(n, t))
+    val dataOut  = Output(Vec(n, t))
     val deqReady = Input(UInt(log2Ceil(n + 1).W))
 
     val flush = Input(Bool())
@@ -69,7 +69,7 @@ class CircularBufferMulti[T <: Data](t: T, n: Int, capacity: Int) extends Module
   nEnqueued := Mux(io.flush, 0.U, nEnqueued + io.enqValid - io.deqReady)
 
   io.nEnqueued := nEnqueued
-  io.nSpace := capacity.U - nEnqueued
+  io.nSpace    := capacity.U - nEnqueued
 
   val outputBufferView = RotateVectorRight(buffer, deqPtr)
   for (i <- 0 until n) {

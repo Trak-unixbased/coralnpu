@@ -19,9 +19,9 @@ import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.freespec.AnyFreeSpec
 import coralnpu.Parameters
 class GPIOSpec extends AnyFreeSpec with ChiselSim with TLULTestUtils {
-  val p  = new Parameters
+  val p      = new Parameters
   val tlul_p = p.toTLUL()
-  val gp = GPIOParameters(width = 8)
+  val gp     = GPIOParameters(width = 8)
 
   "GPIO Output Control" in {
     simulate(new GPIO(tlul_p, gp)) { dut =>

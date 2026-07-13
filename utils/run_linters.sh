@@ -21,7 +21,7 @@ declare -A LINTER_COMMANDS=(
     ["verible-verilog-format"]="true" #  "verible-verilog-format --verify"
     # ["clang-tidy"]="clang-tidy" # Pending compilation database
     ["clang-format"]="clang-format --dry-run --Werror"
-    ["scalafmt"]="true" #  "scalafmt --config .scalafmt.conf --test --list"
+    ["scalafmt"]="scalafmt --config .scalafmt --test"
     ["shellcheck"]="shellcheck -x"
     ["markdownlint"]="mdl --no-verbose"
 )
@@ -33,7 +33,7 @@ declare -A LINTER_FIX_COMMANDS=(
     ["verible-verilog-format"]="true" #  "verible-verilog-format --inplace"
     # ["clang-tidy"]="clang-tidy -fix" # Pending compilation database
     ["clang-format"]="clang-format -i"
-    ["scalafmt"]="true" #  "scalafmt --config .scalafmt.conf"
+    ["scalafmt"]="scalafmt --config .scalafmt"
 )
 
 # Define diff-aware linters: [name]="command and flags"

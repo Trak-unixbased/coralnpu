@@ -26,7 +26,8 @@ class DmaDesc extends Bundle {
 }
 
 object SpiFrameParserPhase extends ChiselEnum {
-  val sOp, sAddr3, sAddr2, sAddr1, sAddr0, sLen1, sLen0, sSendDesc, sWriteData, sWaitEnd, sReset = Value
+  val sOp, sAddr3, sAddr2, sAddr1, sAddr0, sLen1, sLen0, sSendDesc, sWriteData, sWaitEnd, sReset =
+    Value
 }
 
 object DmaEnginePhase extends ChiselEnum {
@@ -46,9 +47,13 @@ class SpiFrameParserRegs extends Bundle {
   val wr_remain = UInt(32.W)
 
   def onOp(byte_valid: Bool, byte_bits: UInt): SpiFrameParserRegs = {
-    val res = Wire(new SpiFrameParserRegs)
+    val res      = Wire(new SpiFrameParserRegs)
     val is_reset = (byte_bits === 3.U)
-    res.phase     := Mux(byte_valid, Mux(is_reset, SpiFrameParserPhase.sReset, SpiFrameParserPhase.sAddr3), this.phase)
+    res.phase := Mux(
+      byte_valid,
+      Mux(is_reset, SpiFrameParserPhase.sReset, SpiFrameParserPhase.sAddr3),
+      this.phase
+    )
     res.op        := Mux(byte_valid, byte_bits, this.op)
     res.addr      := Mux(byte_valid, 0.U, this.addr)
     res.len       := Mux(byte_valid, 0.U, this.len)
@@ -67,10 +72,10 @@ class SpiFrameParserRegs extends Bundle {
   }
 
   def onAddr(
-      next_phase: SpiFrameParserPhase.Type,
-      byte_valid: Bool,
-      byte_bits: UInt,
-      shift: Int
+    next_phase: SpiFrameParserPhase.Type,
+    byte_valid: Bool,
+    byte_bits: UInt,
+    shift: Int
   ): SpiFrameParserRegs = {
     val res = Wire(new SpiFrameParserRegs)
     res.phase := Mux(byte_valid, next_phase, this.phase)
@@ -86,10 +91,10 @@ class SpiFrameParserRegs extends Bundle {
   }
 
   def onLen(
-      next_phase: SpiFrameParserPhase.Type,
-      byte_valid: Bool,
-      byte_bits: UInt,
-      shift: Int
+    next_phase: SpiFrameParserPhase.Type,
+    byte_valid: Bool,
+    byte_bits: UInt,
+    shift: Int
   ): SpiFrameParserRegs = {
     val res = Wire(new SpiFrameParserRegs)
     res.phase := Mux(byte_valid, next_phase, this.phase)

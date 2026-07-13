@@ -33,7 +33,7 @@ object DvuOp extends ChiselEnum {
 
 class DvuCmd(p: Parameters) extends Bundle {
   val addr = UInt(log2Ceil(p.scalarRegCount).W)
-  val op = DvuOp()
+  val op   = DvuOp()
 }
 
 class Dvu(p: Parameters) extends Module {
@@ -51,24 +51,24 @@ class Dvu(p: Parameters) extends Module {
   // and only performs one bit per cycle.
 
   def Divide(prvDivide: UInt, prvRemain: UInt, denom: UInt): (UInt, UInt) = {
-    val shfRemain = Cat(prvRemain(p.xlen-2,0), prvDivide(p.xlen-1))
-    val subtract = shfRemain -& denom
-    assert(subtract.getWidth == (p.xlen+1))
+    val shfRemain = Cat(prvRemain(p.xlen - 2, 0), prvDivide(p.xlen - 1))
+    val subtract  = shfRemain -& denom
+    assert(subtract.getWidth == (p.xlen + 1))
     val divDivide = Wire(UInt(p.xlen.W))
     val divRemain = Wire(UInt(p.xlen.W))
 
-    when (!subtract(p.xlen)) {
-      divDivide := Cat(prvDivide(p.xlen-2,0), 1.U(1.W))
-      divRemain := subtract(p.xlen-1,0)
-    } .otherwise {
-      divDivide := Cat(prvDivide(p.xlen-2,0), 0.U(1.W))
+    when(!subtract(p.xlen)) {
+      divDivide := Cat(prvDivide(p.xlen - 2, 0), 1.U(1.W))
+      divRemain := subtract(p.xlen - 1, 0)
+    }.otherwise {
+      divDivide := Cat(prvDivide(p.xlen - 2, 0), 0.U(1.W))
       divRemain := shfRemain
     }
 
     (divDivide, divRemain)
   }
 
-  val active = RegInit(false.B)
+  val active  = RegInit(false.B)
   val compute = RegInit(false.B)
 
   val addr1    = RegInit(0.U(log2Ceil(p.scalarRegCount).W))
@@ -79,7 +79,7 @@ class Dvu(p: Parameters) extends Module {
   val signed2r = RegInit(false.B)
   val divide2  = RegInit(false.B)
 
-  val count  = RegInit(0.U(log2Ceil(p.xlen + 1).W))
+  val count = RegInit(0.U(log2Ceil(p.xlen + 1).W))
 
   val divide = RegInit(0.U(p.xlen.W))
   val remain = RegInit(0.U(p.xlen.W))
@@ -96,9 +96,9 @@ class Dvu(p: Parameters) extends Module {
   }
 
   // Disable active second to last cycle.
-  when (io.req.valid && io.req.ready) {
+  when(io.req.valid && io.req.ready) {
     active := true.B
-  } .elsewhen (count === (p.xlen - 2).U) {
+  }.elsewhen(count === (p.xlen - 2).U) {
     active := false.B
   }
 
@@ -106,40 +106,38 @@ class Dvu(p: Parameters) extends Module {
   compute := active
 
   addr1   := Mux(io.req.fire, io.req.bits.addr, addr1)
-  signed1 := Mux(
-      io.req.fire, io.req.bits.op.isOneOf(DvuOp.DIV, DvuOp.REM), signed1)
-  divide1 := Mux(
-      io.req.fire, io.req.bits.op.isOneOf(DvuOp.DIV, DvuOp.DIVU), divide1)
+  signed1 := Mux(io.req.fire, io.req.bits.op.isOneOf(DvuOp.DIV, DvuOp.REM), signed1)
+  divide1 := Mux(io.req.fire, io.req.bits.op.isOneOf(DvuOp.DIV, DvuOp.DIVU), divide1)
 
-  when (active && !compute) {
+  when(active && !compute) {
     addr2    := addr1
-    signed2d := signed1 && (io.rs1.data(p.xlen-1) =/= io.rs2.data(p.xlen-1)) && !divByZero
-    signed2r := signed1 && io.rs1.data(p.xlen-1)
+    signed2d := signed1 && (io.rs1.data(p.xlen - 1) =/= io.rs2.data(p.xlen - 1)) && !divByZero
+    signed2r := signed1 && io.rs1.data(p.xlen - 1)
     divide2  := divide1
 
-    val inp = Mux(signed1 && io.rs1.data(p.xlen-1), ~io.rs1.data + 1.U, io.rs1.data)
+    val inp = Mux(signed1 && io.rs1.data(p.xlen - 1), ~io.rs1.data + 1.U, io.rs1.data)
 
     // The divBy0 uses full latency to simplify logic.
     // Count the leading zeroes, which is one less than the priority encoding.
     val clz = Mux(io.rs2.data === 0.U, 0.U, Clz1(inp))
 
-    denom  := Mux(signed1 && io.rs2.data(p.xlen-1), ~io.rs2.data + 1.U, io.rs2.data)
+    denom  := Mux(signed1 && io.rs2.data(p.xlen - 1), ~io.rs2.data + 1.U, io.rs2.data)
     divide := inp << clz
     remain := 0.U
     count  := clz
-  } .elsewhen (compute && count < p.xlen.U) {
+  }.elsewhen(compute && count < p.xlen.U) {
     val (div, rem) = Divide(divide, remain, denom)
     divide := div
     remain := rem
-    count := count + 1.U
-  } .elsewhen (io.rd.valid && io.rd.ready) {
+    count  := count + 1.U
+  }.elsewhen(io.rd.valid && io.rd.ready) {
     count := 0.U
   }
 
   val div = Mux(signed2d, ~divide + 1.U, divide)
   val rem = Mux(signed2r, ~remain + 1.U, remain)
 
-  io.rd.valid := count(log2Ceil(p.xlen))
+  io.rd.valid     := count(log2Ceil(p.xlen))
   io.rd.bits.addr := addr2
   io.rd.bits.data := Mux(divide2, div, rem)
 }

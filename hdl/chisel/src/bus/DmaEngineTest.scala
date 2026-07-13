@@ -79,19 +79,19 @@ class DmaEngineSpec extends AnyFreeSpec with ChiselSim {
 
   /** Build a 32-byte descriptor in memory. */
   def buildDescriptor(
-      mem: scala.collection.mutable.Map[Long, Byte],
-      descAddr: Long,
-      srcAddr: Long,
-      dstAddr: Long,
-      xferLen: Int,
-      xferWidth: Int = 2,
-      srcFixed: Boolean = false,
-      dstFixed: Boolean = false,
-      pollEn: Boolean = false,
-      nextDesc: Long = 0,
-      pollAddr: Long = 0,
-      pollMask: Long = 0,
-      pollValue: Long = 0
+    mem: scala.collection.mutable.Map[Long, Byte],
+    descAddr: Long,
+    srcAddr: Long,
+    dstAddr: Long,
+    xferLen: Int,
+    xferWidth: Int = 2,
+    srcFixed: Boolean = false,
+    dstFixed: Boolean = false,
+    pollEn: Boolean = false,
+    nextDesc: Long = 0,
+    pollAddr: Long = 0,
+    pollMask: Long = 0,
+    pollValue: Long = 0
   ): Unit = {
     memWrite32(mem, descAddr + 0x00, srcAddr)
     memWrite32(mem, descAddr + 0x04, dstAddr)
@@ -117,9 +117,9 @@ class DmaEngineSpec extends AnyFreeSpec with ChiselSim {
     * (D fire happens).
     */
   def runDmaWithMemory(
-      dut: DmaEngine,
-      mem: scala.collection.mutable.Map[Long, Byte],
-      maxCycles: Int = 2000
+    dut: DmaEngine,
+    mem: scala.collection.mutable.Map[Long, Byte],
+    maxCycles: Int = 2000
   ): Int = {
     val host     = dut.io.tl_host
     var txnCount = 0

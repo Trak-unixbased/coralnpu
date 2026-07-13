@@ -18,7 +18,7 @@ import chisel3._
 import chisel3.util._
 
 case class GPIOParameters(
-    width: Int
+  width: Int
 )
 
 class GPIO(p: TLULParameters, gpioParams: GPIOParameters) extends Module {
@@ -114,7 +114,7 @@ import scala.annotation.nowarn
 @nowarn
 object EmitGPIO extends App {
   val tlul_p = new TLULParameters(dataBits = 32, addrBits = 32, idBits = 10)
-  val gp = GPIOParameters(width = 32)
+  val gp     = GPIOParameters(width = 32)
   (new ChiselStage).execute(
     Array("--target", "systemverilog") ++ args,
     Seq(ChiselGeneratorAnnotation(() => new GPIO(tlul_p, gp))) ++ Seq(

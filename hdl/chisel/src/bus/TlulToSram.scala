@@ -29,7 +29,7 @@ class Sram128IO(val addrWidth: Int) extends Bundle {
 
 class TlulToSram(p: TLULParameters, sramAddressWidth: Int) extends Module {
   val tlul_p = p
-  val io = IO(new Bundle {
+  val io     = IO(new Bundle {
     val tl   = Flipped(new OpenTitanTileLink.Host2Device(tlul_p))
     val sram = Flipped(new Sram128IO(sramAddressWidth))
   })
@@ -53,7 +53,8 @@ class TlulToSram(p: TLULParameters, sramAddressWidth: Int) extends Module {
 
   // Input handshake logic:
   // We can accept a request if ((d_q.io.count + metadata_pipe.valid - d_q.io.deq.fire) === 0.U)
-  val a_ready = d_q.io.deq.fire || (!metadata_pipe.valid && (d_q.io.count === 0.U)) // simplified with k-map
+  val a_ready =
+    d_q.io.deq.fire || (!metadata_pipe.valid && (d_q.io.count === 0.U)) // simplified with k-map
   // We accept request if Skid Buffer has space AND (no request is in flight OR host is ready to accept D response)
   // This prevents in-flight requests from overflowing the Skid Buffer if the host stalls.
   // similar to: d_q.io.enq.ready && (!metadata_pipe.valid || io.tl.d.ready)
@@ -61,14 +62,17 @@ class TlulToSram(p: TLULParameters, sramAddressWidth: Int) extends Module {
   val can_issue = io.tl.a.valid && a_ready
 
   io.sram.enable := can_issue
-  io.sram.write  := io.tl.a.bits.opcode === TLULOpcodesA.PutFullData.asUInt || io.tl.a.bits.opcode === TLULOpcodesA.PutPartialData.asUInt
+  io.sram.write := io.tl.a.bits.opcode === TLULOpcodesA.PutFullData.asUInt || io.tl.a.bits.opcode === TLULOpcodesA.PutPartialData.asUInt
   // SRAM is word-addressed (128-bit / 16-byte words)
   io.sram.addr  := io.tl.a.bits.address >> log2Ceil(tlul_p.w)
   io.sram.wdata := io.tl.a.bits.data
   io.sram.wmask := io.tl.a.bits.mask
 
   // Assertion: if pipe is outputting data, d_q.io.enq must be ready
-  assert(!metadata_pipe.valid || d_q.io.enq.ready, "Metadata pipe output valid but d_q is not ready")
+  assert(
+    !metadata_pipe.valid || d_q.io.enq.ready,
+    "Metadata pipe output valid but d_q is not ready"
+  )
 
   // D channel response formulation
   val is_read = metadata_pipe.bits.opcode === TLULOpcodesA.Get.asUInt
@@ -98,10 +102,7 @@ object TlulToSramEmitter extends App {
   (new ChiselStage).execute(
     Array("--target", "systemverilog") ++ args,
     Seq(
-      ChiselGeneratorAnnotation(() =>
-        new TlulToSram(tlul_p, 10)
-      )
+      ChiselGeneratorAnnotation(() => new TlulToSram(tlul_p, 10))
     ) ++ Seq(FirtoolOption("-enable-layers=Verification"))
   )
 }
-
